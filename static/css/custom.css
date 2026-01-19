@@ -1,0 +1,94 @@
+/* ========================
+   General Body & Layout
+======================== */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+    margin: 0;
+    padding: 0;
+}
+
+/* ========================
+   Card Styling
+======================== */
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+/* ========================
+   Buttons
+======================== */
+.btn {
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: scale(1.05);
+}
+
+/* ========================
+   Form Inputs
+======================== */
+.form-control {
+    border-radius: 5px;
+    border: 1px solid #ced4da;
+    padding: 10px;
+}
+
+/* ========================
+   Headings
+======================== */
+h3.card-title {
+    font-weight: 600;
+    color: #343a40;
+}
+
+/* ========================
+   Shopping List Table
+======================== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+table th, table td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+
+table th {
+    background-color: #e9ecef;
+}
+
+/* ========================
+   Alerts / Messages
+======================== */
+.alert {
+    border-radius: 5px;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+}
+
+/* ========================
+   Centering Forms
+======================== */
+.row.justify-content-center {
+    display: flex;
+    justify-content: center;
+}
+
+.card-body {
+    padding: 30px;
+}
+
+/* ========================
+   Buttons for Social Login
+======================== */
+.btn-outline-primary, .btn-outline-danger, .btn-outline-info, .btn-outline-dark {
+    margin-top: 5px;
+}

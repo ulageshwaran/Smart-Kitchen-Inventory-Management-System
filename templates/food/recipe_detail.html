@@ -1,0 +1,387 @@
+{% extends 'food/base.html' %}
+{% block title %}{{ recipe.name }}{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<style>
+    .recipe-detail-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 3rem 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+    }
+
+    .recipe-detail-header h1 {
+        margin: 0;
+        font-size: 2.5rem;
+    }
+
+    .recipe-detail-content {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 2rem;
+    }
+
+    .recipe-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .recipe-section-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .recipe-section-title {
+        color: #667eea;
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 0.5rem;
+    }
+
+    .recipe-info-item {
+        margin-bottom: 1rem;
+    }
+
+    .recipe-info-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .recipe-info-label {
+        font-weight: 700;
+        color: #667eea;
+        font-size: 0.9rem;
+        margin-bottom: 0.3rem;
+    }
+
+    .recipe-info-value {
+        color: #555;
+    }
+
+    .action-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .btn-action {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .btn-back {
+        background-color: #718096;
+        color: white;
+    }
+
+    .btn-back:hover {
+        background-color: #4a5568;
+        transform: translateY(-2px);
+    }
+
+    .btn-delete-recipe {
+        background-color: #f56565;
+        color: white;
+    }
+
+    .btn-delete-recipe:hover:not(:disabled) {
+        background-color: #e53e3e;
+        transform: translateY(-2px);
+    }
+
+    .btn-delete-recipe:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .recipe-main-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .recipe-section {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 2rem;
+    }
+
+    .recipe-section-heading {
+        color: #667eea;
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 1rem;
+    }
+
+    .recipe-section-heading i {
+        font-size: 1.5rem;
+    }
+
+    .recipe-description-text {
+        color: #555;
+        line-height: 1.8;
+        font-size: 0.95rem;
+    }
+
+    .ingredients-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .ingredients-list li {
+        padding: 0.8rem 0;
+        color: #555;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.8rem;
+    }
+
+    .ingredients-list li:before {
+        content: "✓";
+        color: #48bb78;
+        font-weight: bold;
+        font-size: 1.2rem;
+        margin-top: -2px;
+        min-width: 20px;
+        flex-shrink: 0;
+    }
+
+    .instructions-list {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #764ba2;
+    }
+
+    .instructions-list ol {
+        margin: 0;
+        padding-left: 2rem;
+    }
+
+    .instructions-list li {
+        margin-bottom: 1.2rem;
+        line-height: 1.8;
+        color: #555;
+        font-size: 0.95rem;
+    }
+
+    .instructions-list li:last-child {
+        margin-bottom: 0;
+    }
+
+    @media (max-width: 768px) {
+        .recipe-detail-content {
+            grid-template-columns: 1fr;
+        }
+
+        .recipe-detail-header h1 {
+            font-size: 1.8rem;
+        }
+
+        .action-buttons {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="recipe-detail-header">
+    <h1><i class="bi bi-book"></i> {{ recipe.name }}</h1>
+</div>
+
+<div class="recipe-detail-content">
+    <div class="recipe-sidebar">
+        
+
+        <div class="recipe-section-card">
+            <div class="recipe-section-title">
+                <i class="bi bi-gear"></i> Actions
+            </div>
+            <div class="action-buttons">
+                <a href="{% url 'view_saved_recipes' %}" class="btn-action btn-back">
+                    <i class="bi bi-arrow-left"></i> Back
+                </a>
+                <button class="btn-action btn-delete-recipe" id="deleteBtn">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="recipe-main-content">
+        <!-- Description Section -->
+        {% if recipe.description %}
+        <div class="recipe-section">
+            <div class="recipe-section-heading">
+                <i class="bi bi-file-text"></i> Recipe Details
+            </div>
+            <div id="recipe-content">
+                <!-- Formatted content will be inserted here -->
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Ingredients Section -->
+        {% if ingredients %}
+        <div class="recipe-section">
+            <div class="recipe-section-heading">
+                <i class="bi bi-basket"></i> Ingredients
+            </div>
+            <ul class="ingredients-list">
+                {% for ingredient in ingredients %}
+                <li>
+                    <span>{{ ingredient.ingredient.name }}</span>
+                    {% if ingredient.quantity %}
+                    <span style="color: #999; font-size: 0.9rem;">
+                        ({{ ingredient.quantity }}{% if ingredient.unit %} {{ ingredient.unit }}{% endif %})
+                    </span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // Format recipe content like the AI suggestion page
+    function formatRecipeContent(content) {
+        const container = document.getElementById('recipe-content');
+        const lines = content.split('\n');
+        let html = '';
+        let ingredientsList = [];
+        let instructionsList = [];
+        let currentSection = '';
+        let descriptionText = '';
+
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
+
+            // Detect section headers
+            if (line.toLowerCase().includes('ingredient') && line.toLowerCase().includes(':')) {
+                currentSection = 'ingredients';
+                continue;
+            }
+            
+            if (line.toLowerCase().includes('instruction') || line.toLowerCase().includes('step')) {
+                currentSection = 'instructions';
+                continue;
+            }
+
+            // If no section yet, collect as description
+            if (currentSection === '') {
+                if (!line.includes('**') && !line.match(/^\d+\.|^[\*\-]/)) {
+                    descriptionText += line + ' ';
+                }
+                continue;
+            }
+
+            // Process ingredients
+            if (currentSection === 'ingredients') {
+                if (line.match(/^[\*\-\•]/)) {
+                    const cleanLine = line.replace(/^[\*\-\•]\s*/, '').replace(/\*\*/g, '').trim();
+                    if (cleanLine && !cleanLine.toLowerCase().includes('ingredient')) {
+                        ingredientsList.push(cleanLine);
+                    }
+                }
+            } 
+            // Process instructions
+            else if (currentSection === 'instructions') {
+                if (line.match(/^\d+\./) || line.match(/^[\*\-]/)) {
+                    const cleanLine = line.replace(/^\d+\.\s*/, '').replace(/^[\*\-]\s*/, '').replace(/\*\*/g, '').trim();
+                    if (cleanLine && cleanLine.length > 10) {
+                        instructionsList.push(cleanLine);
+                    }
+                }
+                else if (line.length > 20 && !line.match(/^This recipe|^Yields|^Prep|^Cook|^Difficulty/i)) {
+                    if (!line.match(/^#+/)) {
+                        instructionsList.push(line);
+                    }
+                }
+            }
+        }
+
+        // Build HTML
+        if (descriptionText.trim()) {
+            html += `<p style="color: #555; line-height: 1.8; margin-bottom: 1.5rem;">${descriptionText.trim()}</p>`;
+        }
+
+        if (instructionsList.length > 0) {
+            html += '<div style="margin-top: 1.5rem;">';
+            html += '<h4 style="color: #667eea; font-size: 1.1rem; margin-bottom: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #667eea; padding-bottom: 0.5rem;"><i class="bi bi-list-check"></i> Instructions</h4>';
+            html += '<div class="instructions-list"><ol>';
+            instructionsList.forEach((inst) => {
+                html += `<li>${inst}</li>`;
+            });
+            html += '</ol></div></div>';
+        }
+
+        container.innerHTML = html;
+    }
+
+    // Delete recipe function
+    document.getElementById('deleteBtn').addEventListener('click', function() {
+        const recipeName = '{{ recipe.name|escapejs }}';
+        const recipeId = {{ recipe.id }};
+        
+        if (confirm(`Are you sure you want to delete "${recipeName}"? This action cannot be undone.`)) {
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+
+            fetch(`/recipes/${recipeId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json'
+                }
+            }).then(response => {
+                if (response.ok) {
+                    alert('Recipe deleted successfully!');
+                    window.location.href = "{% url 'view_saved_recipes' %}";
+                } else {
+                    alert('Error deleting recipe');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-trash"></i> Delete';
+                }
+            }).catch(error => {
+                console.error('Error:', error);
+                alert('Error deleting recipe: ' + error);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-trash"></i> Delete';
+            });
+        }
+    });
+
+    // Format content on page load
+    const recipeDescription = `{{ recipe.description|escapejs }}`;
+    formatRecipeContent(recipeDescription);
+</script>
+{% endblock %}

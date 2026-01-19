@@ -1,0 +1,632 @@
+{% extends 'food/base.html' %}
+{% block title %}AI Recipe Suggestions{% endblock %}
+
+
+{% block content %}
+{% csrf_token %}
+<style>
+    .recipe-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+    }
+
+    .expiring-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 1rem;
+    }
+
+    .expiry-badge {
+        background-color: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .recipes-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 2rem;
+        margin-bottom: 3rem;
+    }
+
+    .recipe-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+    }
+
+    .recipe-card:hover {
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        border-color: #667eea;
+    }
+
+    .recipe-card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-bottom: none;
+    }
+
+    .recipe-card-header h3 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    .recipe-card-body {
+        padding: 2rem;
+    }
+
+    .recipe-section {
+        margin-bottom: 2rem;
+    }
+
+    .recipe-section h4 {
+        color: #667eea;
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 0.5rem;
+    }
+
+    .ingredients-list {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+    }
+
+    .ingredients-list ul {
+        margin: 0;
+        padding-left: 1.5rem;
+        list-style: none;
+    }
+
+    .ingredients-list li {
+        margin-bottom: 0.8rem;
+        line-height: 1.6;
+        color: #555;
+        padding-left: 1.5rem;
+        position: relative;
+    }
+
+    .ingredients-list li:before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: #48bb78;
+        font-weight: bold;
+    }
+
+    .instructions-list {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #764ba2;
+    }
+
+    .instructions-list ol {
+        margin: 0;
+        padding-left: 2rem;
+    }
+
+    .instructions-list li {
+        margin-bottom: 1.2rem;
+        line-height: 1.8;
+        color: #555;
+        font-size: 0.95rem;
+    }
+
+    .recipe-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .meta-item {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+        border: 1px solid #e0e0e0;
+    }
+
+    .meta-label {
+        font-size: 0.8rem;
+        color: #999;
+        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+
+    .meta-value {
+        font-size: 1.1rem;
+        color: #333;
+        font-weight: 700;
+    }
+
+    .difficulty-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+    }
+
+    .difficulty-easy {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    .difficulty-medium {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+
+    .difficulty-hard {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+
+    .recipe-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 2px solid #e0e0e0;
+    }
+
+    .recipe-actions button {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 0.9rem;
+    }
+
+    .btn-save-recipe {
+        background-color: #48bb78;
+        color: white;
+    }
+
+    .btn-save-recipe:hover:not(:disabled) {
+        background-color: #38a169;
+        transform: translateY(-2px);
+    }
+
+    .btn-save-recipe:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .bottom-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-top: 2rem;
+        margin-bottom: 3rem;
+    }
+
+    .bottom-actions button,
+    .bottom-actions a {
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-weight: 600;
+        text-decoration: none;
+        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .bottom-actions button:hover,
+    .bottom-actions a:hover {
+        transform: translateY(-2px);
+    }
+
+    .btn-primary-action {
+        background-color: #667eea;
+        color: white;
+    }
+
+    .btn-secondary-action {
+        background-color: #718096;
+        color: white;
+    }
+
+    @media (max-width: 768px) {
+        .recipe-meta {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .bottom-actions {
+            grid-template-columns: 1fr;
+        }
+
+        .recipe-actions {
+            flex-direction: column;
+        }
+
+        .recipe-actions button {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="recipe-header">
+    <h1 class="mb-2"><i class="bi bi-chat-dots-fill"></i> AI Recipe Suggestions</h1>
+    <p class="mb-3">Generated based on your soon-to-expire ingredients</p>
+    
+    <div>
+        <strong>Using these ingredients:</strong>
+        <div class="expiring-badges">
+            {% for item in expiring_items %}
+            <div class="expiry-badge">
+                <i class="bi bi-x-circle-fill"></i>
+                {{ item.grocery_name }} (Expires {{ item.ex_date|date:"M d" }})
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="recipes-grid" id="recipes-grid">
+    <!-- Recipes will be inserted here by JavaScript -->
+</div>
+
+<!-- Bottom Action Buttons -->
+<div class="bottom-actions">
+    <button class="btn-primary-action" id="refineAllBtn">
+        <i class="bi bi-sliders"></i> Refine All Recipes
+    </button>
+    <a href="{% url 'index' %}" class="btn-secondary-action">
+        <i class="bi bi-arrow-left"></i> Back to Inventory
+    </a>
+</div>
+
+<!-- Refine Recipe Modal -->
+<div class="modal fade" id="refineModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-sliders"></i> Refine Recipes</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Customize recipes to match your preferences:</p>
+                <div class="mb-3">
+                    <label class="form-label"><strong>Add Preferences</strong></label>
+                    <input type="text" class="form-control" id="preferencesInput" 
+                           placeholder="e.g., vegetarian, quick, spicy, healthy">
+                    <small class="text-muted d-block mt-2">Examples: vegan, gluten-free, low-carb, no-onion, low-fat</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="refineSubmitBtn">
+                    <i class="bi bi-magic"></i> Refine
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const rawRecipes = `{{ recipes|escapejs }}`;
+    let parsedRecipes = [];
+
+    // Parse recipes from raw text
+    function parseRecipes(text) {
+        const recipes = [];
+        
+        // Look for recipe headers like "## 1. Recipe Name" or "### 1. Recipe Name"
+        const recipePattern = /^#+\s*(\d+)\.\s+(.+?)(?=^#+\s*\d+\.|$)/gms;
+        let match;
+        
+        while ((match = recipePattern.exec(text)) !== null) {
+            const recipeNum = match[1];
+            const recipeName = match[2].split('\n')[0].trim();
+            const recipeContent = match[0].replace(/^#+\s*\d+\.\s+/, '').trim();
+            
+            if (recipeName && recipeContent.length > 50) {
+                recipes.push({
+                    number: recipeNum,
+                    name: recipeName,
+                    content: recipeContent,
+                    fullText: match[0]
+                });
+            }
+        }
+        
+        // If no recipes found, try alternative parsing
+        return recipes.length > 0 ? recipes : parseRecipesAlternative(text);
+    }
+
+    // Alternative parsing - look for "Recipe 1:", "Recipe 2:" patterns
+    function parseRecipesAlternative(text) {
+        const recipes = [];
+        const regex = /Recipe\s+(\d+):\s+(.+?)(?=Recipe\s+\d+:|$)/gis;
+        let match;
+        
+        while ((match = regex.exec(text)) !== null) {
+            const num = match[1];
+            const content = match[2].trim();
+            const name = content.split('\n')[0].trim();
+            
+            if (name && content.length > 50) {
+                recipes.push({
+                    number: num,
+                    name: name,
+                    content: content,
+                    fullText: match[0]
+                });
+            }
+        }
+        
+        return recipes;
+    }
+
+    // Helper function to escape HTML in data attributes
+    function escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // Render recipes to UI
+    function renderRecipes(recipes) {
+        const grid = document.getElementById('recipes-grid');
+        grid.innerHTML = '';
+        
+        recipes.forEach((recipe, idx) => {
+            const card = document.createElement('div');
+            card.className = 'recipe-card';
+            
+            const escapedName = escapeHtml(recipe.name);
+            const escapedContent = escapeHtml(recipe.content);
+            
+            card.innerHTML = `
+                <div class="recipe-card-header">
+                    <h3><i class="bi bi-fire"></i> ${escapedName}</h3>
+                </div>
+                <div class="recipe-card-body">
+                    <div class="recipe-content" id="recipe-content-${idx}">
+                        <!-- Content will be formatted below -->
+                    </div>
+                    <div class="recipe-actions">
+                        <button class="btn-save-recipe" data-recipe-idx="${idx}">
+                            <i class="bi bi-bookmark"></i> Save This Recipe
+                        </button>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
+            
+            // Format and display recipe content
+            formatRecipeContent(recipe.content, `recipe-content-${idx}`);
+            
+            // Add event listener to save button
+            card.querySelector('.btn-save-recipe').addEventListener('click', function() {
+                saveRecipeFromCard(recipe.name, recipe.content, this);
+            });
+        });
+    }
+
+    // Format recipe content with sections
+    function formatRecipeContent(content, containerId) {
+        const container = document.getElementById(containerId);
+        const lines = content.split('\n');
+        let html = '';
+        let ingredientsList = [];
+        let instructionsList = [];
+        let metaInfo = {};
+        let currentSection = '';
+
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
+
+            // Detect section headers
+            if (line.toLowerCase().includes('**ingredient') || line.toLowerCase().includes('ingredients:')) {
+                currentSection = 'ingredients';
+                continue;
+            }
+            
+            if (line.toLowerCase().includes('**step') || line.toLowerCase().includes('**instruction') || 
+                line.toLowerCase().includes('instructions:') || line.toLowerCase().includes('exact cooking')) {
+                currentSection = 'instructions';
+                continue;
+            }
+
+            // Extract meta information
+            const metaMatch = line.match(/^\*?\s*(Yields?|Prep Time|Cook Time|Difficulty):\s*(.+)/i);
+            if (metaMatch) {
+                metaInfo[metaMatch[1].toLowerCase()] = metaMatch[2].trim().replace(/\*\*/g, '');
+                currentSection = '';
+                continue;
+            }
+
+            // Process based on current section
+            if (currentSection === 'ingredients') {
+                // Only add lines that look like ingredients (start with bullet, dash, or asterisk)
+                if (line.match(/^[\*\-\•]/)) {
+                    const cleanLine = line.replace(/^[\*\-\•]\s*/, '').replace(/\*\*/g, '').trim();
+                    if (cleanLine && !cleanLine.toLowerCase().includes('ingredient')) {
+                        ingredientsList.push(cleanLine);
+                    }
+                }
+            } 
+            else if (currentSection === 'instructions') {
+                // Only add lines that look like steps (start with number or are longer text)
+                if (line.match(/^\d+\./) || line.match(/^[\*\-]/)) {
+                    const cleanLine = line.replace(/^\d+\.\s*/, '').replace(/^[\*\-]\s*/, '').replace(/\*\*/g, '').trim();
+                    if (cleanLine && cleanLine.length > 10) {
+                        instructionsList.push(cleanLine);
+                    }
+                }
+                // Also capture longer descriptive lines in instructions section
+                else if (line.length > 20 && !line.match(/^This recipe|^Yields|^Prep|^Cook|^Difficulty/i)) {
+                    if (!line.match(/^#+/) && !line.includes('**')) {
+                        instructionsList.push(line);
+                    }
+                }
+            }
+        }
+
+        // Build HTML
+        if (Object.keys(metaInfo).length > 0) {
+            html += '<div class="recipe-meta">';
+            if (metaInfo.yields) html += `<div class="meta-item"><div class="meta-label">Servings</div><div class="meta-value">${metaInfo.yields}</div></div>`;
+            if (metaInfo['prep time']) html += `<div class="meta-item"><div class="meta-label">Prep Time</div><div class="meta-value">${metaInfo['prep time']}</div></div>`;
+            if (metaInfo['cook time']) html += `<div class="meta-item"><div class="meta-label">Cook Time</div><div class="meta-value">${metaInfo['cook time']}</div></div>`;
+            if (metaInfo.difficulty) {
+                const diff = metaInfo.difficulty.toLowerCase();
+                const badgeClass = diff.includes('easy') ? 'difficulty-easy' : diff.includes('medium') ? 'difficulty-medium' : 'difficulty-hard';
+                html += `<div class="meta-item"><div class="meta-label">Difficulty</div><div class="meta-value"><span class="difficulty-badge ${badgeClass}">${metaInfo.difficulty}</span></div></div>`;
+            }
+            html += '</div>';
+        }
+
+        if (ingredientsList.length > 0) {
+            html += '<div class="recipe-section">';
+            html += '<h4><i class="bi bi-basket"></i> Ingredients</h4>';
+            html += '<div class="ingredients-list"><ul>';
+            ingredientsList.forEach(ing => {
+                html += `<li>${ing}</li>`;
+            });
+            html += '</ul></div></div>';
+        }
+
+        if (instructionsList.length > 0) {
+            html += '<div class="recipe-section">';
+            html += '<h4><i class="bi bi-list-check"></i> Instructions</h4>';
+            html += '<div class="instructions-list"><ol>';
+            instructionsList.forEach((inst, idx) => {
+                html += `<li>${inst}</li>`;
+            });
+            html += '</ol></div></div>';
+        }
+
+        container.innerHTML = html;
+    }
+
+    // Save recipe from card - FIXED VERSION
+    async function saveRecipeFromCard(name, content, button) {
+        button.disabled = true;
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+        
+        try {
+            const response = await fetch('{% url "save_recipe" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    recipe_name: name,
+                    instructions: content,
+                    ingredients: {}
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                button.innerHTML = '<i class="bi bi-check-circle"></i> Saved!';
+                button.style.backgroundColor = '#48bb78';
+                button.disabled = false;
+                setTimeout(() => {
+                    alert('Recipe saved successfully!');
+                }, 500);
+            } else {
+                alert('Error: ' + data.message);
+                button.disabled = false;
+                button.innerHTML = originalHTML;
+            }
+        } catch (error) {
+            console.error('Save error:', error);
+            alert('Error saving recipe: ' + error.message);
+            button.disabled = false;
+            button.innerHTML = originalHTML;
+        }
+    }
+
+    // Refine recipes
+    document.getElementById('refineAllBtn').addEventListener('click', () => {
+        new bootstrap.Modal(document.getElementById('refineModal')).show();
+    });
+
+    document.getElementById('refineSubmitBtn').addEventListener('click', async () => {
+        const preferences = document.getElementById('preferencesInput').value.trim();
+        if (!preferences) {
+            alert('Please enter preferences');
+            return;
+        }
+
+        const btn = document.getElementById('refineSubmitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Refining...';
+
+        try {
+            const response = await fetch('{% url "refine_recipe" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({
+                    recipe: rawRecipes,
+                    preferences: preferences
+                })
+            });
+
+            const data = await response.json();
+            if (data.status === 'success') {
+                parsedRecipes = parseRecipes(data.recipe);
+                renderRecipes(parsedRecipes);
+                bootstrap.Modal.getInstance(document.getElementById('refineModal')).hide();
+                document.getElementById('preferencesInput').value = '';
+                alert('Recipes refined successfully!');
+            } else {
+                alert('Error: ' + data.message);
+            }
+        } catch (error) {
+            alert('Error: ' + error);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-magic"></i> Refine';
+        }
+    });
+
+    // Initialize
+    parsedRecipes = parseRecipes(rawRecipes);
+    renderRecipes(parsedRecipes);
+</script>
+{% endblock %}

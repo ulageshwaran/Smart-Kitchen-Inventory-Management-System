@@ -1,0 +1,231 @@
+{% extends 'food/base.html' %}
+{% block title %}My Saved Recipes{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<style>
+    .recipes-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+    }
+
+    .recipes-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-bottom: 3rem;
+    }
+
+    .recipe-list-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .recipe-list-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        border-color: #667eea;
+    }
+
+    .recipe-card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        min-height: 80px;
+        display: flex;
+        align-items: center;
+    }
+
+    .recipe-card-header h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 700;
+    }
+
+    .recipe-card-body {
+        padding: 1.5rem;
+    }
+
+    .recipe-description {
+        color: #666;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        margin-bottom: 1rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .recipe-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .recipe-actions a,
+    .recipe-actions button {
+        flex: 1;
+        padding: 0.6rem 1rem;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        text-align: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.3rem;
+    }
+
+    .btn-view {
+        background-color: #667eea;
+        color: white;
+    }
+
+    .btn-view:hover {
+        background-color: #5568d3;
+        transform: translateY(-2px);
+    }
+
+    .btn-delete {
+        background-color: #f56565;
+        color: white;
+    }
+
+    .btn-delete:hover:not(:disabled) {
+        background-color: #e53e3e;
+        transform: translateY(-2px);
+    }
+
+    .btn-delete:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .no-recipes {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #999;
+    }
+
+    .no-recipes p {
+        margin-bottom: 1rem;
+    }
+
+    .btn-create {
+        background-color: #48bb78;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn-create:hover {
+        background-color: #38a169;
+        text-decoration: none;
+        transform: translateY(-2px);
+    }
+
+    @media (max-width: 768px) {
+        .recipes-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="recipes-header">
+    <h1 class="mb-2"><i class="bi bi-bookmark-fill"></i> My Saved Recipes</h1>
+    <p class="mb-0">Recipes you've saved from AI suggestions</p>
+</div>
+
+{% if recipes %}
+    <div class="recipes-grid">
+        {% for recipe in recipes %}
+        <div class="recipe-list-card">
+            <div class="recipe-card-header">
+                <h3>{{ recipe.name }}</h3>
+            </div>
+            <div class="recipe-card-body">
+                {% if recipe.description %}
+                <div class="recipe-description">
+                    {{ recipe.description|truncatewords:20 }}
+                </div>
+                {% endif %}
+                <div class="recipe-actions">
+                    <a href="{% url 'recipe_detail' recipe.id %}" class="btn-view">
+                        <i class="bi bi-eye"></i> View
+                    </a>
+                    <button class="btn-delete" onclick="deleteRecipeCard({{ recipe.id }}, '{{ recipe.name|escapejs }}', this)">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="no-recipes">
+        <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+        <p style="margin-top: 1rem; font-size: 1.1rem;">No saved recipes yet</p>
+        <p style="color: #999; margin-bottom: 1.5rem;">Start by generating AI recipes from your expiring ingredients</p>
+        <a href="{% url 'suggest_recipes' %}" class="btn-create">
+            <i class="bi bi-lightning"></i> Generate Recipes
+        </a>
+    </div>
+{% endif %}
+
+<script>
+    function deleteRecipeCard(id, name, button) {
+        if (confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+            button.disabled = true;
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Deleting...';
+
+            fetch(`/recipes/${id}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/json'
+                }
+            }).then(response => {
+                if (response.ok || response.status === 200) {
+                    // Get the closest card and fade it out
+                    const card = button.closest('.recipe-list-card');
+                    card.style.transition = 'opacity 0.3s ease';
+                    card.style.opacity = '0';
+                    
+                    setTimeout(() => {
+                        card.remove();
+                        // Check if any recipes are left
+                        const recipesGrid = document.querySelector('.recipes-grid');
+                        if (!recipesGrid || recipesGrid.children.length === 0) {
+                            location.reload();
+                        }
+                    }, 300);
+                } else {
+                    alert('Error deleting recipe');
+                    button.disabled = false;
+                    button.innerHTML = originalHTML;
+                }
+            }).catch(error => {
+                console.error('Error:', error);
+                alert('Error deleting recipe: ' + error);
+                button.disabled = false;
+                button.innerHTML = originalHTML;
+            });
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,295 @@
+{% extends 'food/base.html' %}
+{% block title %}Shopping List{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Shopping List</h2>
+
+<form method="get" class="row mb-3">
+    <div class="col-md-8">
+        <div class="input-group">
+            <input type="search" 
+                   class="form-control" 
+                   placeholder="Search available groceries..." 
+                   id="searchInput" 
+                   name="search" 
+                   value="{{ search_query|default:'' }}">
+            <button type="submit" class="btn btn-outline-primary">
+                <i class="bi bi-search"></i> Search
+            </button>
+            {% if search_query %}
+            <a href="{% url 'shopping' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-x-circle"></i> Clear
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</form>
+
+{% if search_query %}
+<div class="alert alert-info">
+    Showing results for: <strong>{{ search_query }}</strong>
+    {% if groceries.count == 0 %}
+    - No results found
+    {% else %}
+    - Found {{ groceries.count }} item{{ groceries.count|pluralize }}
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="row">
+    <!-- Available groceries -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-basket"></i> Available Groceries</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Name</th>
+                                <th>Qty</th>
+                                <th>Category</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for grocery in groceries %}
+                            <tr>
+                                <td>{{ grocery.grocery_name }}</td>
+                                <td>{{ grocery.quantity }}</td>
+                                <td><span class="badge bg-info">{{ grocery.grocerie_type.type_name }}</span></td>
+                                <td>
+                                    <button class="btn btn-sm btn-success add-btn" 
+                                            data-id="{{ grocery.id }}"
+                                            data-name="{{ grocery.grocery_name }}"
+                                            data-qty="{{ grocery.quantity }}"
+                                            data-category="{{ grocery.grocerie_type.type_name }}">
+                                        <i class="bi bi-plus"></i> Add
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">
+                                    {% if search_query %}
+                                    No groceries found matching "{{ search_query }}".
+                                    {% else %}
+                                    No groceries available.
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shopping list -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-cart"></i> Your Shopping List</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                    <table class="table table-hover align-middle mb-0" id="shoppingListTable">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Name</th>
+                                <th>Quantity</th>
+                                <th>Category</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dynamically added rows go here -->
+                        </tbody>
+                    </table>
+                    <div id="emptyMessage" class="text-center text-muted py-4">
+                        Your shopping list is empty. Add items from the left panel.
+                    </div>
+                </div>
+                <div class="mt-3 d-grid gap-2">
+                    <button id="printButton" class="btn btn-secondary" disabled>
+                        <i class="bi bi-printer"></i> Print Shopping List
+                    </button>
+                    <button id="clearAllButton" class="btn btn-outline-danger" disabled>
+                        <i class="bi bi-trash"></i> Clear All
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Shopping list stored in memory
+    let shoppingList = [];
+
+    function updateShoppingListDisplay() {
+        const tbody = document.querySelector('#shoppingListTable tbody');
+        const emptyMessage = document.getElementById('emptyMessage');
+        const printBtn = document.getElementById('printButton');
+        const clearBtn = document.getElementById('clearAllButton');
+        
+        tbody.innerHTML = '';
+        
+        if (shoppingList.length === 0) {
+            emptyMessage.style.display = 'block';
+            printBtn.disabled = true;
+            clearBtn.disabled = true;
+        } else {
+            emptyMessage.style.display = 'none';
+            printBtn.disabled = false;
+            clearBtn.disabled = false;
+            
+            shoppingList.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.name}</td>
+                    <td>
+                        <input type="number" 
+                               class="form-control form-control-sm quantity-input" 
+                               value="${item.quantity}" 
+                               min="1"
+                               data-index="${index}"
+                               style="width: 80px;">
+                    </td>
+                    <td><span class="badge bg-info">${item.category}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-danger delete-btn" data-index="${index}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            
+            // Add event listeners for quantity changes
+            document.querySelectorAll('.quantity-input').forEach(input => {
+                input.addEventListener('change', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    const newQty = parseInt(this.value) || 1;
+                    if (newQty > 0) {
+                        shoppingList[index].quantity = newQty;
+                    } else {
+                        this.value = shoppingList[index].quantity;
+                    }
+                });
+            });
+            
+            // Add event listeners for delete buttons
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    shoppingList.splice(index, 1);
+                    updateShoppingListDisplay();
+                });
+            });
+        }
+    }
+
+    // Add item to shopping list
+    document.querySelectorAll('.add-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const name = this.getAttribute('data-name');
+            const qty = parseInt(this.getAttribute('data-qty'));
+            const category = this.getAttribute('data-category');
+            
+            // Check if item already exists
+            const existingItem = shoppingList.find(item => item.name === name);
+            
+            if (existingItem) {
+                existingItem.quantity += 1;
+            } else {
+                shoppingList.push({
+                    name: name,
+                    quantity: qty,
+                    category: category
+                });
+            }
+            
+            updateShoppingListDisplay();
+            
+            // Visual feedback
+            this.innerHTML = '<i class="bi bi-check"></i> Added';
+            this.classList.remove('btn-success');
+            this.classList.add('btn-secondary');
+            setTimeout(() => {
+                this.innerHTML = '<i class="bi bi-plus"></i> Add';
+                this.classList.remove('btn-secondary');
+                this.classList.add('btn-success');
+            }, 1000);
+        });
+    });
+
+    // Print shopping list
+    document.getElementById('printButton').addEventListener('click', () => {
+        if (shoppingList.length === 0) return;
+        
+        let printContent = `
+            <html>
+            <head>
+                <title>Shopping List</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h1 { color: #0d6efd; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                    th { background-color: #0d6efd; color: white; }
+                    tr:nth-child(even) { background-color: #f2f2f2; }
+                </style>
+            </head>
+            <body>
+                <h1>Shopping List</h1>
+                <p>Date: ${new Date().toLocaleDateString()}</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item Name</th>
+                            <th>Quantity</th>
+                            <th>Category</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        shoppingList.forEach(item => {
+            printContent += `
+                <tr>
+                    <td>${item.name}</td>
+                    <td>${item.quantity}</td>
+                    <td>${item.category}</td>
+                </tr>
+            `;
+        });
+        
+        printContent += `
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+        
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        printWindow.print();
+    });
+
+    // Clear all items
+    document.getElementById('clearAllButton').addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear all items from your shopping list?')) {
+            shoppingList = [];
+            updateShoppingListDisplay();
+        }
+    });
+
+    // Initialize display
+    updateShoppingListDisplay();
+</script>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends 'food/base.html' %}
+{% block title %}Manage Groceries{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Manage Groceries</h2>
+
+<form method="get" class="d-flex mb-3">
+    <input type="search" 
+           class="form-control me-2" 
+           placeholder="Search by name or category..." 
+           id="searchInput" 
+           name="search" 
+           value="{{ search_query|default:'' }}">
+    <button type="submit" class="btn btn-outline-primary me-2">
+        <i class="bi bi-search"></i> Search
+    </button>
+    {% if search_query %}
+    <a href="{% url 'index' %}" class="btn btn-outline-secondary me-2">
+        <i class="bi bi-x-circle"></i> Clear
+    </a>
+    {% endif %}
+    <a href="{% url 'add' %}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Add Grocery
+    </a>
+</form>
+
+{% if search_query %}
+<div class="alert alert-info">
+    Showing results for: <strong>{{ search_query }}</strong>
+    {% if groceries.count == 0 %}
+    - No results found
+    {% else %}
+    - Found {{ groceries.count }} item{{ groceries.count|pluralize }}
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead class="table-primary">
+            <tr>
+                <th>Name</th>
+                <th>Expiry Date</th>
+                <th>Quantity</th>
+                <th>Category</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for grocery in groceries %}
+            <tr>
+                <td>{{ grocery.grocery_name }}</td>
+                <td>{{ grocery.ex_date|date:"M d, Y" }}</td>
+                <td>{{ grocery.quantity }}</td>
+                <td><span class="badge bg-info">{{ grocery.grocerie_type.type_name }}</span></td>
+                <td>
+                    <a href="{% url 'edit' grocery.id %}" class="btn btn-sm btn-warning">
+                        <i class="bi bi-pencil"></i> Edit
+                    </a>
+                    <a href="{% url 'delete' grocery.id %}" 
+                       class="btn btn-sm btn-danger"
+                       onclick="return confirm('Are you sure you want to delete {{ grocery.grocery_name }}?')">
+                        <i class="bi bi-trash"></i> Delete
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center text-muted py-4">
+                    {% if search_query %}
+                    No groceries found matching "{{ search_query }}". Try a different search term.
+                    {% else %}
+                    No groceries found. <a href="{% url 'add' %}">Add your first grocery</a>!
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if groceries.count > 0 %}
+<div class="alert alert-light mt-3">
+    <strong>Total Items:</strong> {{ groceries.count }}
+</div>
+{% endif %}
+{% endblock %}
