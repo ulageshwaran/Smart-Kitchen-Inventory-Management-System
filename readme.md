@@ -564,9 +564,7 @@ We welcome contributions! Here's how you can help:
 - Email: ulageshofficial@gmail.com
 - LinkedIn: [linkedin.com/in/ulageshwaran](https://linkedin.com/in/ulageshwaran)
 - GitHub: [@ulageshwaran](https://github.com/ulageshwaran)
-
 ---
-
 <div align="center">
   
   **Built with 🤖 AI and ❤️ to reduce food waste**
