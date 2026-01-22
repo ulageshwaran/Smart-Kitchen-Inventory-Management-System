@@ -20,4 +20,13 @@ urlpatterns = [
     path('recipes/', views.view_saved_recipes, name='view_saved_recipes'),
     path('recipes/<int:pk>/', views.view_recipe_detail, name='recipe_detail'),
     path('recipes/<int:pk>/delete/', views.delete_recipe_view, name='delete_recipe'),
+    # Food Analysis
+    path('analyze-food/', views.analyze_food_view, name='analyze_food'),
+    # Bill Upload
+    path('upload-bill/', views.upload_bill_view, name='upload_bill'),
+    path('save-bill-items/', views.save_bill_items, name='save_bill_items'),
+    # AI Chef API
+    path('api/generate-recipes/', views.generate_recipes_api, name='generate_recipes_api'),
+    path('api/recipe/<int:pk>/candidates/', views.get_recipe_deduction_candidates, name='get_recipe_deduction_candidates'),
+    path('api/deduct-ingredients/', views.deduct_ingredients, name='deduct_ingredients'),
 ]

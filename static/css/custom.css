@@ -1,94 +1,169 @@
-/* ========================
-   General Body & Layout
-======================== */
+:root {
+    --primary: #667eea;
+    --secondary: #764ba2;
+    --accent: #ed8936;
+    --success: #48bb78;
+    --danger: #f56565;
+    --warning: #ecc94b;
+    --light: #f7fafc;
+    --dark: #2d3748;
+    --gray: #a0aec0;
+    --gradient-primary: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: #f8f9fa;
-    margin: 0;
-    padding: 0;
+    color: var(--dark);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
 }
 
-/* ========================
-   Card Styling
-======================== */
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    letter-spacing: -0.025em;
+}
+
+/* Navbar */
+.navbar {
+    background: var(--gradient-primary) !important;
+    padding: 1rem 0;
+}
+
+.navbar-brand {
+    font-size: 1.5rem;
+}
+
+.nav-link {
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.nav-link:hover {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Cards */
 .card {
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    margin-bottom: 20px;
-}
-
-/* ========================
-   Buttons
-======================== */
-.btn {
-    border-radius: 5px;
+    border: none;
+    border-radius: 15px;
+    box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;
+    overflow: hidden;
+    background: white;
 }
 
-.btn:hover {
-    transform: scale(1.05);
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
 }
 
-/* ========================
-   Form Inputs
-======================== */
-.form-control {
-    border-radius: 5px;
-    border: 1px solid #ced4da;
-    padding: 10px;
-}
-
-/* ========================
-   Headings
-======================== */
-h3.card-title {
-    font-weight: 600;
-    color: #343a40;
-}
-
-/* ========================
-   Shopping List Table
-======================== */
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 15px;
-}
-
-table th, table td {
-    padding: 10px;
-    text-align: left;
-    border-bottom: 1px solid #dee2e6;
-}
-
-table th {
-    background-color: #e9ecef;
-}
-
-/* ========================
-   Alerts / Messages
-======================== */
-.alert {
-    border-radius: 5px;
-    padding: 10px 15px;
-    margin-bottom: 15px;
-}
-
-/* ========================
-   Centering Forms
-======================== */
-.row.justify-content-center {
-    display: flex;
-    justify-content: center;
+.card-header {
+    background: white;
+    border-bottom: 1px solid #edf2f7;
+    padding: 1.5rem;
+    font-weight: 700;
 }
 
 .card-body {
-    padding: 30px;
+    padding: 1.5rem;
 }
 
-/* ========================
-   Buttons for Social Login
-======================== */
-.btn-outline-primary, .btn-outline-danger, .btn-outline-info, .btn-outline-dark {
-    margin-top: 5px;
+/* Form Styles */
+.form-control, .form-select {
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    border: 2px solid #e2e8f0;
+    transition: all 0.2s;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Buttons */
+.btn {
+    border-radius: 8px;
+    padding: 0.6rem 1.5rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--gradient-primary);
+    border: none;
+    box-shadow: 0 4px 6px rgba(102, 126, 234, 0.25);
+}
+
+.btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-success {
+    background-color: var(--success);
+    border: none;
+}
+
+.btn-danger {
+    background-color: var(--danger);
+    border: none;
+}
+
+/* Grocery specific */
+.grocery-item {
+    border-left: 4px solid transparent;
+}
+
+.grocery-item.expired {
+    border-left-color: var(--danger);
+    background-color: #fff5f5;
+}
+
+.grocery-item.expiring {
+    border-left-color: var(--warning);
+    background-color: #fffff0;
+}
+
+.badge-days {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--dark);
+    padding: 0.35em 0.8em;
+    border-radius: 20px;
+    font-weight: 600;
+}
+
+.badge-expired {
+    background: #fed7d7;
+    color: #c53030;
+}
+
+.badge-warning {
+    background: #fefcbf;
+    color: #b7791f;
+}
+
+.badge-success {
+    background: #c6f6d5;
+    color: #2f855a;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Glassmorphism */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
 }

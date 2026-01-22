@@ -1,0 +1,271 @@
+{% extends 'food/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <h2 class="mb-4 text-center">
+                <i class="bi bi-receipt-cutoff text-primary"></i> Upload Grocery Bill
+            </h2>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <form id="uploadForm">
+                        <div class="mb-4 text-center">
+                            <div class="upload-area p-5 border rounded bg-light" id="dropZone">
+                                <i class="bi bi-cloud-arrow-up display-4 text-muted"></i>
+                                <p class="mt-2">Drag and drop your bill image here or click to browse</p>
+                                <input type="file" id="billImage" accept="image/*" class="d-none">
+                                <button type="button" class="btn btn-primary mt-2"
+                                    onclick="document.getElementById('billImage').click()">
+                                    Select Image
+                                </button>
+                            </div>
+                            <div id="imagePreview" class="mt-3 d-none">
+                                <img src="" class="img-fluid rounded border" style="max-height: 300px;">
+                                <button type="button" class="btn btn-sm btn-outline-danger mt-2" id="removeImage">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success btn-lg" id="analyzeBtn" disabled>
+                                <span class="spinner-border spinner-border-sm d-none" role="status"
+                                    aria-hidden="true"></span>
+                                <span class="btn-text">Analyze Bill</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="d-none">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Review Items</h5>
+                        <button class="btn btn-light btn-sm" id="saveAllBtn">Save All to Pantry</button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="itemsTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Item Name</th>
+                                        <th>Quantity</th>
+                                        <th>Expiry Date</th>
+                                        <th>Category</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="itemsList">
+                                    <!-- Items will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const fileInput = document.getElementById('billImage');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const imagePreview = document.getElementById('imagePreview');
+        const previewImg = imagePreview.querySelector('img');
+        const dropZone = document.getElementById('dropZone');
+        const uploadForm = document.getElementById('uploadForm');
+
+        let selectedFile = null;
+        let categories = []; // Will be populated from API
+
+        // Handle File Selection
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFile = file;
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    previewImg.src = e.target.result;
+                    imagePreview.classList.remove('d-none');
+                    dropZone.classList.add('d-none');
+                    analyzeBtn.disabled = false;
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        document.getElementById('removeImage').addEventListener('click', function () {
+            selectedFile = null;
+            fileInput.value = '';
+            imagePreview.classList.add('d-none');
+            dropZone.classList.remove('d-none');
+            analyzeBtn.disabled = true;
+            document.getElementById('resultsSection').classList.add('d-none');
+        });
+
+        // Handle Form Submit
+        uploadForm.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            if (!selectedFile) return;
+
+            setLoading(true);
+
+            const reader = new FileReader();
+            reader.readAsDataURL(selectedFile);
+
+            reader.onload = async function () {
+                try {
+                    const response = await fetch("{% url 'upload_bill' %}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken')
+                        },
+                        body: JSON.stringify({
+                            image: reader.result
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (data.status === 'success') {
+                        categories = data.categories; // Store categories for dropdowns
+                        renderItems(data.items);
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('An error occurred while analyzing the bill.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+        });
+
+        function setLoading(isLoading) {
+            const spinner = analyzeBtn.querySelector('.spinner-border');
+            const text = analyzeBtn.querySelector('.btn-text');
+
+            if (isLoading) {
+                analyzeBtn.disabled = true;
+                spinner.classList.remove('d-none');
+                text.textContent = ' Analyzing...';
+            } else {
+                analyzeBtn.disabled = false;
+                spinner.classList.add('d-none');
+                text.textContent = 'Analyze Bill';
+            }
+        }
+
+        function renderItems(items) {
+            const list = document.getElementById('itemsList');
+            list.innerHTML = '';
+            document.getElementById('resultsSection').classList.remove('d-none');
+
+            items.forEach((item, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                <td><input type="text" class="form-control form-control-sm" value="${item.name}" data-field="name"></td>
+                <td><input type="number" step="any" class="form-control form-control-sm" value="${item.quantity}" style="width: 70px" data-field="quantity"></td>
+                <td><input type="date" class="form-control form-control-sm" value="${item.expiry}" data-field="expiry"></td>
+                <td>
+                    <select class="form-select form-select-sm" data-field="category">
+                        ${categories.map(cat =>
+                    `<option value="${cat.name}" ${cat.name.toLowerCase() === item.category.toLowerCase() ? 'selected' : ''}>${cat.name}</option>`
+                ).join('')}
+                    </select>
+                </td>
+                <td><button class="btn btn-danger btn-sm delete-row"><i class="bi bi-trash"></i></button></td>
+            `;
+
+                // Delete functionality
+                row.querySelector('.delete-row').addEventListener('click', function () {
+                    row.remove();
+                });
+
+                list.appendChild(row);
+            });
+        }
+
+        // Save All Items
+        document.getElementById('saveAllBtn').addEventListener('click', async function () {
+            const rows = document.querySelectorAll('#itemsList tr');
+            const itemsToSave = [];
+
+            rows.forEach(row => {
+                itemsToSave.push({
+                    name: row.querySelector('[data-field="name"]').value,
+                    quantity: row.querySelector('[data-field="quantity"]').value,
+                    expiry: row.querySelector('[data-field="expiry"]').value,
+                    category: row.querySelector('[data-field="category"]').value
+                });
+            });
+
+            if (itemsToSave.length === 0) {
+                alert("No items to save.");
+                return;
+            }
+
+            try {
+                const response = await fetch("{% url 'save_bill_items' %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ items: itemsToSave })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    window.location.href = "{% url 'index' %}";
+                } else {
+                    alert('Error saving items: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to save items.');
+            }
+        });
+
+        // Helper to get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    });
+</script>
+
+<style>
+    .upload-area {
+        border: 2px dashed #ccc;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .upload-area:hover {
+        background-color: #f8f9fa;
+        border-color: #0d6efd;
+    }
+</style>
+{% endblock %}

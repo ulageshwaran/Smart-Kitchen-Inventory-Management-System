@@ -11,6 +11,8 @@ from django.http import JsonResponse
 import json
 import requests
 import os
+import base64
+
 
 # ============================================
 # EXPIRY WARNING SYSTEM
@@ -106,8 +108,9 @@ def get_ai_recipe_suggestion(ingredients_list, preferences=""):
             return None, "Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
         
         # Gemini API endpoint - use latest model
-        # Using gemini-2.5-flash (fastest, free tier)
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}"
+        # Gemini API endpoint - use latest model
+        # Using gemini-flash-latest (fastest, free tier)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
         
         ingredients_str = ', '.join(ingredients_list)
         
@@ -122,6 +125,7 @@ For each recipe, provide:
 3. Step-by-step instructions (5-8 steps)
 4. Cooking time
 5. Difficulty level (Easy/Medium/Hard)
+6. Calories per serving
 
 Keep recipes practical and suitable for home cooking."""
 
@@ -209,46 +213,128 @@ Keep recipes practical and suitable for home cooking."""
 # ============================================
 
 @login_required
+@login_required
 def suggest_recipes(request):
-    """Get AI-suggested recipes based on soon-expiring ingredients"""
+    """Landing page for AI Chef - shows ingredients before generation"""
     user = request.user
     today = date.today()
     
-    # Get items expiring within 7 days
-    expiring_soon = Grocery.objects.filter(
-        user=user,
-        ex_date__lte=today + timedelta(days=7),
-        ex_date__gte=today
-    ).select_related('grocerie_type').order_by('ex_date')
+    # Get all user groceries
+    all_groceries = Grocery.objects.filter(user=user).select_related('grocerie_type')
     
-    if not expiring_soon.exists():
-        messages.info(request, "No ingredients expiring soon! Your fridge is in good shape.")
-        return redirect('index')
+    expiring_soon = []
+    others = []
     
-    # Extract ingredient info
-    ingredients = [g.grocery_name for g in expiring_soon]
-    expiry_info = [(g.grocery_name, g.ex_date) for g in expiring_soon]
-    
-    # Get preferences from request if provided
-    preferences = request.GET.get('preferences', '')
-    
-    # Generate recipes using Gemini API
-    recipes_text, error = get_ai_recipe_suggestion(ingredients, preferences)
-    
-    if error:
-        messages.error(request, f"Could not generate recipes: {error}")
-        return redirect('index')
-    
-    if not recipes_text:
-        messages.error(request, "Failed to generate recipes. Please try again.")
-        return redirect('index')
-    
-    return render(request, 'food/recipes_suggestion.html', {
-        'recipes': recipes_text,
+    for g in all_groceries:
+        if g.is_expiring_soon or g.is_expired:
+            expiring_soon.append(g)
+        else:
+            others.append(g)
+            
+    return render(request, 'food/ai_chef_landing.html', {
         'expiring_items': expiring_soon,
-        'expiry_info': expiry_info,
-        'ingredients_list': ingredients
+        'other_items': others,
+        'total_count': len(all_groceries)
     })
+
+@login_required
+def generate_recipes_api(request):
+    """API to generate recipes using all ingredients"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+        
+    try:
+        data = json.loads(request.body)
+        preferences = data.get('preferences', '')
+        
+        user = request.user
+        today = date.today()
+        
+        # Get ingredients
+        groceries = Grocery.objects.filter(user=user)
+        
+        expiring = []
+        others = []
+        
+        for g in groceries:
+            if g.is_expiring_soon or g.is_expired:
+                expiring.append(g.grocery_name)
+            else:
+                others.append(g.grocery_name)
+        
+        if not expiring and not others:
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'No ingredients found in your kitchen!'
+            }, status=400)
+            
+        # Call Gemini
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            return JsonResponse({'status': 'error', 'message': 'API key not configured'}, status=500)
+            
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        
+        expiring_str = ", ".join(expiring)
+        others_str = ", ".join(others)
+        
+        prompt = f"""As a creative chef, generate 3 detailed recipes based on these available ingredients.
+        
+CRITICAL PRIORITY (Use these if possible as they are expiring):
+{expiring_str if expiring else 'None'}
+
+OTHER AVAILABLE INGREDIENTS:
+{others_str if others else 'None'}
+
+User Preferences: {preferences if preferences else 'None'}
+
+Rules:
+1. You don't have to use ALL ingredients, but try to use the PRIORITY ones to reduce waste.
+2. You can assume basic pantry staples (oil, salt, pepper, water) are available.
+
+Return the response ONLY as a valid JSON list of objects. No markdown formatting.
+Example format:
+[
+    {{
+        "name": "Recipe Name",
+        "description": "Brief description",
+        "ingredients": ["1 cup Rice", "2 Tomatoes"],
+        "instructions": ["Step 1...", "Step 2..."],
+        "time": "30 mins",
+        "difficulty": "Easy",
+        "calories": "300 kcal",
+        "uses_expiring": true
+    }}
+]
+"""
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}]
+        }
+        
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'candidates' in data and len(data['candidates']) > 0:
+                content = data['candidates'][0]['content']
+                if 'parts' in content:
+                    text_resp = content['parts'][0]['text']
+                    # Clean markdown code blocks if present
+                    text_resp = text_resp.replace('```json', '').replace('```', '').strip()
+                    try:
+                        recipes_data = json.loads(text_resp)
+                        return JsonResponse({'status': 'success', 'recipes': recipes_data})
+                    except json.JSONDecodeError:
+                        # Fallback if AI fails JSON format
+                        return JsonResponse({'status': 'error', 'message': 'AI response format error'}, status=500)
+            return JsonResponse({'status': 'error', 'message': 'AI returned no content'}, status=500)
+        else:
+            return JsonResponse({'status': 'error', 'message': f'API Error: {response.text}'}, status=500)
+            
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 @login_required
 def view_saved_recipes(request):
@@ -290,7 +376,8 @@ def save_recipe(request):
             
             recipe = Receipe.objects.create(
                 name=data.get('recipe_name', 'Unnamed Recipe'),
-                description=data.get('instructions', '')
+                description=data.get('instructions', ''),
+                calories=data.get('calories', '')
             )
             
             # Save ingredients
@@ -312,10 +399,13 @@ def save_recipe(request):
                 'recipe_id': recipe.id
             })
         except Exception as e:
+            print(f"Error in save_recipe: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return JsonResponse({
                 'status': 'error',
                 'message': str(e)
-            }, status=400)
+            }, status=500)
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
@@ -342,7 +432,7 @@ def refine_recipe(request):
                 }, status=400)
             
             # Use same API endpoint as recipe generation
-            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
             
             prompt = f"""Modify this recipe based on the following preferences: {preferences}
 
@@ -413,6 +503,241 @@ Provide the modified recipe with the same format as before."""
             }, status=400)
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
+
+# ============================================
+# FOOD IMAGE ANALYSIS
+# ============================================
+
+def analyze_food_image(image_data):
+    """
+    Analyze food image using Gemini Flash Vision
+    """
+    try:
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            return None, "Gemini API key not configured."
+            
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        
+        # Determine mime type (assume jpeg if not specified, frontend should handle this)
+        # simplistic handling: image_data is base64 string
+        
+        prompt = """Analyze this food image and provide:
+1. Name of the dish/food
+2. Estimated calories (total or per serving)
+3. Main ingredients visible
+4. Nutritional breakdown (Protein, Carbs, Fat - estimated)
+5. Healthiness rating (1-10) and brief explanation
+
+Format the response in clear Markdown."""
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": image_data
+                        }
+                    }
+                ]
+            }]
+        }
+        
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'candidates' in data and len(data['candidates']) > 0:
+                content = data['candidates'][0]['content']
+                if 'parts' in content:
+                    return content['parts'][0]['text'], None
+            return None, "No analysis generated."
+        else:
+            return None, f"API Error: {response.text}"
+            
+    except Exception as e:
+        return None, str(e)
+
+@login_required
+def analyze_food_view(request):
+    """View to upload and analyze food images"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            image_b64 = data.get('image')
+            
+            if not image_b64:
+                return JsonResponse({'status': 'error', 'message': 'No image provided'}, status=400)
+                
+            # Remove header if present (e.g., "data:image/jpeg;base64,")
+            if ',' in image_b64:
+                image_b64 = image_b64.split(',')[1]
+                
+            analysis, error = analyze_food_image(image_b64)
+            
+            if error:
+                return JsonResponse({'status': 'error', 'message': error}, status=400)
+                
+            return JsonResponse({
+                'status': 'success',
+                'analysis': analysis
+            })
+            
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+            
+    return render(request, 'food/food_analysis.html')
+
+
+# ============================================
+# BILL UPLOAD & ANALYSIS
+# ============================================
+
+def analyze_bill_image(image_data, grocery_types):
+    """
+    Analyze bill image using Gemini Flash Vision
+    Returns a list of identified items with estimated expiry
+    """
+    try:
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            return None, "Gemini API key not configured."
+            
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        
+        # Create category list string
+        categories_str = ", ".join([t.type_name for t in grocery_types])
+        
+        prompt = f"""Analyze this grocery bill/receipt image and extract ONLY the food/grocery items. 
+Ignore non-food items (like soap, paper towels) and general receipt text (taxes, store name).
+
+For each food item, provide:
+1. Generic Ingredient Name ONLY. Remove all brand names, packaging info, and adjectives. 
+   - Example: "Aashirvaad Shudh Chakki Atta" -> "Whole Wheat Flour" or "Atta"
+   - Example: "Amul Gold Milk" -> "Milk"
+   - Example: "Maggi Noodles" -> "Instant Noodles"
+   - Example: "Tata Salt" -> "Salt"
+2. Quantity (default to 1 if not specified)
+3. Estimated Expiry Date (YYYY-MM-DD) - Make a reasonable guess based on the type of food (e.g., Milk: 7 days, Rice: 1 year, Vegetables: 5 days). Today is {date.today()}.
+4. Category - Choose the best match from this list: [{categories_str}]
+
+Format the response as a valid JSON list of objects.
+Example format:
+[
+  {{"name": "Milk", "quantity": 1, "expiry": "2024-02-01", "category": "Dairy"}},
+  {{"name": "Basmati Rice", "quantity": 1, "expiry": "2025-01-01", "category": "Grains"}}
+]
+Return ONLY the JSON. Do not include markdown formatting or backticks.
+"""
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": image_data
+                        }
+                    }
+                ]
+            }]
+        }
+        
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'candidates' in data and len(data['candidates']) > 0:
+                content = data['candidates'][0]['content']
+                if 'parts' in content:
+                    text_response = content['parts'][0]['text']
+                    # Clean up markdown if present
+                    text_response = text_response.replace('```json', '').replace('```', '').strip()
+                    try:
+                        items = json.loads(text_response)
+                        return items, None
+                    except json.JSONDecodeError:
+                        return None, "Failed to parse AI response as JSON."
+            return None, "No analysis generated."
+        else:
+            return None, f"API Error: {response.text}"
+            
+    except Exception as e:
+        return None, str(e)
+
+@login_required
+def upload_bill_view(request):
+    """View to upload and analyze grocery bills"""
+    grocery_types = GroceryType.objects.all()
+    
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            image_b64 = data.get('image')
+            
+            if not image_b64:
+                return JsonResponse({'status': 'error', 'message': 'No image provided'}, status=400)
+                
+            if ',' in image_b64:
+                image_b64 = image_b64.split(',')[1]
+                
+            items, error = analyze_bill_image(image_b64, grocery_types)
+            
+            if error:
+                return JsonResponse({'status': 'error', 'message': error}, status=400)
+                
+            return JsonResponse({
+                'status': 'success',
+                'items': items,
+                'categories': [{'id': t.id, 'name': t.type_name} for t in grocery_types]
+            })
+            
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+            
+    return render(request, 'food/upload_bill.html')
+
+@login_required
+def save_bill_items(request):
+    """Save reviewed items from bill to database"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            items = data.get('items', [])
+            
+            saved_count = 0
+            
+            for item in items:
+                # Find or create category (simple fuzzy match could be better, but exact for now)
+                category_name = item.get('category')
+                grocery_type = GroceryType.objects.filter(type_name__iexact=category_name).first()
+                
+                if not grocery_type:
+                    # Fallback to first category or a default "Others" if you have it
+                    grocery_type = GroceryType.objects.first()
+                
+                Grocery.objects.create(
+                    grocery_name=item.get('name'),
+                    ex_date=item.get('expiry'),
+                    quantity=float(item.get('quantity', 1)),
+                    grocerie_type=grocery_type,
+                    user=request.user
+                )
+                saved_count += 1
+            
+            messages.success(request, f'Successfully added {saved_count} items to your pantry!')
+            return JsonResponse({'status': 'success', 'count': saved_count})
+            
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+            
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
 
 # ============================================
 # EXISTING FUNCTIONS (Keep as is)
@@ -606,3 +931,101 @@ def signout_view(request):
     logout(request)
     messages.success(request, "You have been logged out successfully")
     return redirect('signin')
+
+# ============================================
+# RECIPE DEDUCTION APIS
+# ============================================
+
+@login_required
+def get_recipe_deduction_candidates(request, pk):
+    """
+    Return recipe ingredients and potential inventory matches
+    for the user to confirm usage.
+    """
+    recipe = get_object_or_404(Receipe, pk=pk)
+    recipe_ingredients = recipe.receipe_ingredients_set.all()
+    user_groceries = Grocery.objects.filter(user=request.user)
+    
+    candidates = []
+    
+    for ri in recipe_ingredients:
+        # Simple fuzzy match prioritization
+        # 1. Exact match
+        # 2. Contains match
+        
+        best_match_id = None
+        
+        # Try to find best match in inventory
+        matches = []
+        for g in user_groceries:
+            g_name = g.grocery_name.lower()
+            ri_name = ri.ingredient.name.lower()
+            
+            if ri_name == g_name:
+                matches.insert(0, g) # Prioritize exact
+            elif ri_name in g_name or g_name in ri_name:
+                matches.append(g) # Append partials
+        
+        best_match_id = matches[0].id if matches else None
+        
+        candidates.append({
+            'ingredient_name': ri.ingredient.name,
+            'quantity_needed': ri.quantity,
+            'unit': ri.unit,
+            'best_match_id': best_match_id
+        })
+        
+    # Serialize user inventory for the dropdown
+    inventory_json = [{
+        'id': g.id, 
+        'name': g.grocery_name, 
+        'qty': g.quantity,
+        'unit': g.grocerie_type.type_name # Using category as proxy for unit context sometimes
+    } for g in user_groceries]
+    
+    return JsonResponse({
+        'status': 'success',
+        'candidates': candidates,
+        'inventory': inventory_json
+    })
+
+@login_required
+def deduct_ingredients(request):
+    """
+    Deduct confirmed ingredient quantities from inventory.
+    Expects JSON: { deductions: [{grocery_id: 1, deduct_qty: 0.5}, ...] }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+        
+    try:
+        data = json.loads(request.body)
+        deductions = data.get('deductions', [])
+        
+        updated_count = 0
+        deleted_count = 0
+        
+        for item in deductions:
+            grocery_id = item.get('grocery_id')
+            deduct_qty = float(item.get('deduct_qty', 0))
+            
+            if not grocery_id or deduct_qty <= 0:
+                continue
+                
+            grocery = Grocery.objects.filter(pk=grocery_id, user=request.user).first()
+            if grocery:
+                if grocery.quantity <= deduct_qty:
+                    grocery.delete()
+                    deleted_count += 1
+                else:
+                    grocery.quantity -= deduct_qty
+                    grocery.save()
+                    updated_count += 1
+                    
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Updated {updated_count} items and consumed {deleted_count} items completely.'
+        })
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

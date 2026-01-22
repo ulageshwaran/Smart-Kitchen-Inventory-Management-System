@@ -1,10 +1,14 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Kitchen Inventory{% endblock %}</title>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -13,46 +17,38 @@
 
     {% block extra_css %}{% endblock %}
 </head>
-<body>
-    <!-- EXPIRY WARNINGS BANNER -->
-    {% if expiry_warnings %}
-        {% if expiry_warnings.expired_count > 0 %}
-        <div class="alert alert-danger alert-dismissible fade show m-0" role="alert">
-            <i class="bi bi-exclamation-circle"></i>
-            <strong>URGENT!</strong> {{ expiry_warnings.expired_count }} item(s) have expired. 
-            <a href="{% url 'index' %}" class="alert-link">View expired items</a>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-        {% endif %}
-        
-        {% if expiry_warnings.expiring_soon_count > 0 %}
-        <div class="alert alert-warning alert-dismissible fade show m-0" role="alert">
-            <i class="bi bi-clock-history"></i>
-            <strong>Expiring Soon!</strong> {{ expiry_warnings.expiring_soon_count }} item(s) will expire within 7 days. 
-            <a href="{% url 'suggest_recipes' %}" class="alert-link">Get recipe suggestions</a>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-        {% endif %}
-    {% endif %}
 
-    <!-- MESSAGE ALERTS -->
+<body style="font-family: 'Inter', sans-serif; background-color: #f8f9fa;">
+
+
+  
 
     <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'index' %}"><i class="bi bi-egg-fried"></i> Kitchen Inventory</a>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top shadow-sm"
+        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'index' %}">
+                <i class="bi bi-egg-fried"></i> Kitchen<span class="text-warning">Inventory</span>
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item"><a class="nav-link" href="{% url 'index' %}">My Kitchen</a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'shopping' %}">Shopping List</a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'suggest_recipes' %}">
-                        <i class="bi bi-robot"></i> AI Recipes
-                    </a></li>
+                            <i class="bi bi-robot"></i> AI Chef
+                        </a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'analyze_food' %}">
+                            <i class="bi bi-camera"></i> Food Lens
+                        </a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'upload_bill' %}">
+                            <i class="bi bi-receipt"></i> Upload Bill
+                        </a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'view_saved_recipes' %}">
-                        <i class="bi bi-bookmark"></i> Saved Recipes
-                    </a></li>
+                            <i class="bi bi-bookmark"></i> Saved Recipes
+                        </a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'index' %}">Manage Groceries</a></li>
                 </ul>
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
@@ -63,7 +59,9 @@
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="#">Profile</a></li>
-                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
                             <li><a class="dropdown-item" href="{% url 'signout' %}">Logout</a></li>
                         </ul>
                     </li>
@@ -75,7 +73,15 @@
             </div>
         </div>
     </nav>
-
+  <!-- MESSAGE ALERTS -->
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} alert-dismissible fade show m-3 shadow-sm" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
     <div class="container mt-5 pt-3">
         {% block content %}{% endblock %}
     </div>
@@ -84,4 +90,5 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     {% block extra_js %}{% endblock %}
 </body>
+
 </html>

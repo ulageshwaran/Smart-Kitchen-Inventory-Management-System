@@ -40,12 +40,12 @@
         border: 2px solid #e0e0e0;
         border-radius: 12px;
         overflow: hidden;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         transition: all 0.3s ease;
     }
 
     .recipe-card:hover {
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
         border-color: #667eea;
     }
 
@@ -278,7 +278,7 @@
 <div class="recipe-header">
     <h1 class="mb-2"><i class="bi bi-chat-dots-fill"></i> AI Recipe Suggestions</h1>
     <p class="mb-3">Generated based on your soon-to-expire ingredients</p>
-    
+
     <div>
         <strong>Using these ingredients:</strong>
         <div class="expiring-badges">
@@ -318,9 +318,10 @@
                 <p class="text-muted">Customize recipes to match your preferences:</p>
                 <div class="mb-3">
                     <label class="form-label"><strong>Add Preferences</strong></label>
-                    <input type="text" class="form-control" id="preferencesInput" 
-                           placeholder="e.g., vegetarian, quick, spicy, healthy">
-                    <small class="text-muted d-block mt-2">Examples: vegan, gluten-free, low-carb, no-onion, low-fat</small>
+                    <input type="text" class="form-control" id="preferencesInput"
+                        placeholder="e.g., vegetarian, quick, spicy, healthy">
+                    <small class="text-muted d-block mt-2">Examples: vegan, gluten-free, low-carb, no-onion,
+                        low-fat</small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -340,16 +341,16 @@
     // Parse recipes from raw text
     function parseRecipes(text) {
         const recipes = [];
-        
+
         // Look for recipe headers like "## 1. Recipe Name" or "### 1. Recipe Name"
         const recipePattern = /^#+\s*(\d+)\.\s+(.+?)(?=^#+\s*\d+\.|$)/gms;
         let match;
-        
+
         while ((match = recipePattern.exec(text)) !== null) {
             const recipeNum = match[1];
             const recipeName = match[2].split('\n')[0].trim();
             const recipeContent = match[0].replace(/^#+\s*\d+\.\s+/, '').trim();
-            
+
             if (recipeName && recipeContent.length > 50) {
                 recipes.push({
                     number: recipeNum,
@@ -359,7 +360,7 @@
                 });
             }
         }
-        
+
         // If no recipes found, try alternative parsing
         return recipes.length > 0 ? recipes : parseRecipesAlternative(text);
     }
@@ -369,12 +370,12 @@
         const recipes = [];
         const regex = /Recipe\s+(\d+):\s+(.+?)(?=Recipe\s+\d+:|$)/gis;
         let match;
-        
+
         while ((match = regex.exec(text)) !== null) {
             const num = match[1];
             const content = match[2].trim();
             const name = content.split('\n')[0].trim();
-            
+
             if (name && content.length > 50) {
                 recipes.push({
                     number: num,
@@ -384,7 +385,7 @@
                 });
             }
         }
-        
+
         return recipes;
     }
 
@@ -404,14 +405,18 @@
     function renderRecipes(recipes) {
         const grid = document.getElementById('recipes-grid');
         grid.innerHTML = '';
-        
+
         recipes.forEach((recipe, idx) => {
             const card = document.createElement('div');
             card.className = 'recipe-card';
-            
+
             const escapedName = escapeHtml(recipe.name);
             const escapedContent = escapeHtml(recipe.content);
-            
+
+            // Extract calories for saving
+            const calorieMatch = recipe.content.match(/^\*?\s*Calories.*:\s*(.+)/im);
+            const calories = calorieMatch ? calorieMatch[1].trim() : '';
+
             card.innerHTML = `
                 <div class="recipe-card-header">
                     <h3><i class="bi bi-fire"></i> ${escapedName}</h3>
@@ -428,13 +433,13 @@
                 </div>
             `;
             grid.appendChild(card);
-            
+
             // Format and display recipe content
             formatRecipeContent(recipe.content, `recipe-content-${idx}`);
-            
+
             // Add event listener to save button
-            card.querySelector('.btn-save-recipe').addEventListener('click', function() {
-                saveRecipeFromCard(recipe.name, recipe.content, this);
+            card.querySelector('.btn-save-recipe').addEventListener('click', function () {
+                saveRecipeFromCard(recipe.name, recipe.content, calories, this);
             });
         });
     }
@@ -458,15 +463,16 @@
                 currentSection = 'ingredients';
                 continue;
             }
-            
-            if (line.toLowerCase().includes('**step') || line.toLowerCase().includes('**instruction') || 
+
+            if (line.toLowerCase().includes('**step') || line.toLowerCase().includes('**instruction') ||
                 line.toLowerCase().includes('instructions:') || line.toLowerCase().includes('exact cooking')) {
                 currentSection = 'instructions';
                 continue;
             }
 
             // Extract meta information
-            const metaMatch = line.match(/^\*?\s*(Yields?|Prep Time|Cook Time|Difficulty):\s*(.+)/i);
+            // Extract meta information
+            const metaMatch = line.match(/^\*?\s*(Yields?|Prep Time|Cook Time|Difficulty|Calories.*):\s*(.+)/i);
             if (metaMatch) {
                 metaInfo[metaMatch[1].toLowerCase()] = metaMatch[2].trim().replace(/\*\*/g, '');
                 currentSection = '';
@@ -482,7 +488,7 @@
                         ingredientsList.push(cleanLine);
                     }
                 }
-            } 
+            }
             else if (currentSection === 'instructions') {
                 // Only add lines that look like steps (start with number or are longer text)
                 if (line.match(/^\d+\./) || line.match(/^[\*\-]/)) {
@@ -492,7 +498,7 @@
                     }
                 }
                 // Also capture longer descriptive lines in instructions section
-                else if (line.length > 20 && !line.match(/^This recipe|^Yields|^Prep|^Cook|^Difficulty/i)) {
+                else if (line.length > 20 && !line.match(/^This recipe|^Yields|^Prep|^Cook|^Difficulty|^Calories/i)) {
                     if (!line.match(/^#+/) && !line.includes('**')) {
                         instructionsList.push(line);
                     }
@@ -511,6 +517,11 @@
                 const badgeClass = diff.includes('easy') ? 'difficulty-easy' : diff.includes('medium') ? 'difficulty-medium' : 'difficulty-hard';
                 html += `<div class="meta-item"><div class="meta-label">Difficulty</div><div class="meta-value"><span class="difficulty-badge ${badgeClass}">${metaInfo.difficulty}</span></div></div>`;
             }
+            if (metaInfo['calories']) html += `<div class="meta-item"><div class="meta-label">Calories</div><div class="meta-value">${metaInfo['calories']}</div></div>`;
+            // Handle "calories per serving" variation if regex captured it differently
+            const calKey = Object.keys(metaInfo).find(k => k.includes('calories'));
+            if (calKey && calKey !== 'calories') html += `<div class="meta-item"><div class="meta-label">Calories</div><div class="meta-value">${metaInfo[calKey]}</div></div>`;
+
             html += '</div>';
         }
 
@@ -538,11 +549,11 @@
     }
 
     // Save recipe from card - FIXED VERSION
-    async function saveRecipeFromCard(name, content, button) {
+    async function saveRecipeFromCard(name, content, calories, button) {
         button.disabled = true;
         const originalHTML = button.innerHTML;
         button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
-        
+
         try {
             const response = await fetch('{% url "save_recipe" %}', {
                 method: 'POST',
@@ -553,7 +564,8 @@
                 body: JSON.stringify({
                     recipe_name: name,
                     instructions: content,
-                    ingredients: {}
+                    ingredients: {},
+                    calories: calories
                 })
             });
 

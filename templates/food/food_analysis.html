@@ -1,0 +1,252 @@
+{% extends 'food/base.html' %}
+{% block title %}Analyze Food - Smart Kitchen{% endblock %}
+
+{% block content %}
+{% csrf_token %}
+<style>
+    .analysis-header {
+        text-align: center;
+        margin-bottom: 3rem;
+        color: #2d3748;
+    }
+    
+    .analysis-header h1 {
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+    }
+
+    .upload-container {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 3rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        border: 1px solid rgba(255,255,255,0.5);
+        text-align: center;
+        transition: all 0.3s ease;
+        max-width: 800px;
+        margin: 0 auto;
+        border: 2px dashed #cbd5e0;
+    }
+
+    .upload-container.dragover {
+        border-color: #667eea;
+        background: rgba(102, 126, 234, 0.05);
+    }
+
+    .upload-icon {
+        font-size: 4rem;
+        color: #a0aec0;
+        margin-bottom: 1rem;
+        transition: color 0.3s ease;
+    }
+
+    .upload-container:hover .upload-icon {
+        color: #667eea;
+    }
+
+    #imagePreview {
+        max-width: 100%;
+        max-height: 400px;
+        border-radius: 12px;
+        margin-top: 2rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        display: none;
+    }
+
+    .btn-analyze {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 1rem 3rem;
+        border-radius: 50px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-top: 2rem;
+        transition: transform 0.2s;
+        box-shadow: 0 4px 15px rgba(118, 75, 162, 0.4);
+        display: none; /* Hidden until image selected */
+    }
+
+    .btn-analyze:hover {
+        transform: translateY(-2px);
+    }
+
+    .result-card {
+        background: white;
+        border-radius: 20px;
+        padding: 2.5rem;
+        margin-top: 3rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        display: none;
+        animation: slideUp 0.5s ease;
+    }
+
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.9);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        flex-direction: column;
+    }
+
+    .scanner {
+        width: 100px;
+        height: 100px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm.995-14.901a1 1 0 1 0-1.99 0A5.002 5.002 0 0 0 3 6c0 1.098-.5 6-2 7h14c-1.5-1-2-5.902-2-7 0-2.42-1.72-4.44-4.005-4.901z'/%3E%3C/svg%3E") no-repeat center;
+        -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zm.995-14.901a1 1 0 1 0-1.99 0A5.002 5.002 0 0 0 3 6c0 1.098-.5 6-2 7h14c-1.5-1-2-5.902-2-7 0-2.42-1.72-4.44-4.005-4.901z'/%3E%3C/svg%3E") no-repeat center;
+        animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.2); opacity: 0.7; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+</style>
+
+<div class="analysis-header">
+    <h1><i class="bi bi-camera"></i> Food Lens</h1>
+    <p>Snap a photo to analyze calories and nutrition instantly.</p>
+</div>
+
+<div class="upload-container" id="dropZone">
+    <i class="bi bi-cloud-arrow-up upload-icon"></i>
+    <h3>Drag & Drop or Click to Upload</h3>
+    <p class="text-muted">Supports JPG, PNG (Max 5MB)</p>
+    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+    <img id="imagePreview" alt="Food Preview">
+    <button class="btn btn-analyze" id="analyzeBtn">
+        <i class="bi bi-stars"></i> Analyze Now
+    </button>
+</div>
+
+<div class="loading-overlay" id="loader">
+    <div class="scanner"></div>
+    <h3 class="mt-4 text-primary">Analyzing your food...</h3>
+    <p class="text-muted">Identifying ingredients and calculating calories</p>
+</div>
+
+<div class="container">
+    <div class="result-card" id="resultCard">
+        <h2 class="mb-4 text-primary"><i class="bi bi-clipboard-data"></i> Analysis Result</h2>
+        <div id="resultContent" class="markdown-body"></div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const loader = document.getElementById('loader');
+    const resultCard = document.getElementById('resultCard');
+    const resultContent = document.getElementById('resultContent');
+    let currentFile = null;
+
+    // Drag & Drop handlers
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            handleFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    dropZone.addEventListener('click', (e) => {
+        if(e.target !== analyzeBtn) fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) {
+            handleFile(e.target.files[0]);
+        }
+    });
+
+    function handleFile(file) {
+        if (!file.type.startsWith('image/')) {
+            alert('Please upload an image file.');
+            return;
+        }
+
+        currentFile = file;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            imagePreview.src = e.target.result;
+            imagePreview.style.display = 'block';
+            analyzeBtn.style.display = 'inline-block';
+            dropZone.querySelector('.upload-icon').style.display = 'none';
+            dropZone.querySelector('h3').style.display = 'none';
+            dropZone.querySelector('p').style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    analyzeBtn.addEventListener('click', async () => {
+        if (!currentFile) return;
+
+        // Show loader
+        loader.style.display = 'flex';
+        resultCard.style.display = 'none';
+
+        // Convert file to base64
+        const reader = new FileReader();
+        reader.readAsDataURL(currentFile);
+        reader.onload = async () => {
+            const base64String = reader.result;
+
+            try {
+                const response = await fetch('{% url "analyze_food" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({ image: base64String })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    resultContent.innerHTML = marked.parse(data.analysis);
+                    resultCard.style.display = 'block';
+                    resultCard.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                console.error(error);
+                alert('An error occurred during analysis.');
+            } finally {
+                loader.style.display = 'none';
+            }
+        };
+    });
+</script>
+{% endblock %}

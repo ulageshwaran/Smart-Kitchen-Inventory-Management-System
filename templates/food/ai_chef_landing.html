@@ -1,0 +1,289 @@
+{% extends 'food/base.html' %}
+
+{% block title %}AI Chef - Smart Recipe Generator{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 text-center">
+        <h1 class="display-6 fw-bold text-primary mb-2">
+            <i class="bi bi-robot"></i> AI Chef
+        </h1>
+        <p class="text-muted">I'll create recipes using your available ingredients, prioritizing what's expiring soon.
+        </p>
+    </div>
+</div>
+
+<div class="row justify-content-center" id="chefWorkspace">
+    <div class="col-lg-8">
+        <!-- Ingredients Summary -->
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-basket2"></i> Your Kitchen Inventory</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6 class="text-danger fw-bold"><i class="bi bi-clock-history"></i> Priority Ingredients (Expiring
+                        Soon)</h6>
+                    {% if expiring_items %}
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for item in expiring_items %}
+                        <span class="badge bg-danger bg-opacity-10 text-danger border border-danger">
+                            {{ item.grocery_name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted small">No items expiring within 7 days.</p>
+                    {% endif %}
+                </div>
+
+                <hr>
+
+                <div class="mb-3">
+                    <h6 class="text-primary fw-bold"><i class="bi bi-check-circle"></i> Other Available Ingredients</h6>
+                    {% if other_items %}
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for item in other_items %}
+                        <span class="badge bg-light text-dark border">
+                            {{ item.grocery_name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted small">No other items found.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Preferences Form -->
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-body">
+                <label for="preferences" class="form-label fw-bold">Dietary Preferences or Cravings (Optional)</label>
+                <textarea class="form-control" id="preferences" rows="2"
+                    placeholder="e.g., Vegetarian, low carb, spicy, I want a soup..."></textarea>
+            </div>
+        </div>
+
+        <!-- Generate Button -->
+        <div class="d-grid gap-2">
+            <button id="generateBtn" class="btn btn-primary btn-lg shadow-sm py-3 rounded-pill">
+                <i class="bi bi-magic"></i> Generate Recipes
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Loading State -->
+<div id="loadingState" class="text-center py-5 d-none">
+    <div class="spinner-grow text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <h4 class="text-muted animate-pulse">Our AI Chef is cooking up ideas...</h4>
+    <p class="text-muted small">Using your {{ total_count }} ingredients to find the perfect meal.</p>
+</div>
+
+<!-- Results Container -->
+<div id="resultsContainer" class="d-none">
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h3 class="fw-bold">Suggested Recipes</h3>
+            <button onclick="location.reload()" class="btn btn-outline-primary btn-sm rounded-pill">
+                <i class="bi bi-arrow-repeat"></i> Start Over
+            </button>
+        </div>
+    </div>
+    <div id="recipesContent" class="row g-4">
+        <!-- AI Response will be injected here -->
+    </div>
+</div>
+
+<script>
+    document.getElementById('generateBtn').addEventListener('click', async function () {
+        const preferences = document.getElementById('preferences').value;
+        const workspace = document.getElementById('chefWorkspace');
+        const loading = document.getElementById('loadingState');
+        const results = document.getElementById('resultsContainer');
+        const recipesContent = document.getElementById('recipesContent');
+
+        // Show loading
+        workspace.classList.add('d-none');
+        loading.classList.remove('d-none');
+
+        try {
+            const response = await fetch("{% url 'generate_recipes_api' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ preferences: preferences })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                loading.classList.add('d-none');
+                renderRecipes(data.recipes);
+                results.classList.remove('d-none');
+            } else {
+                alert('Error: ' + data.message);
+                location.reload();
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to connect to AI Chef.');
+            location.reload();
+        }
+    });
+
+    function renderRecipes(recipes) {
+        const container = document.getElementById('recipesContent');
+        container.innerHTML = '';
+
+        recipes.forEach((recipe, index) => {
+            const col = document.createElement('div');
+            col.className = 'col-md-6 col-lg-4';
+
+            // Build ingredients list HTML
+            const ingredientsHtml = recipe.ingredients.map(ing => `<li>${ing}</li>`).join('');
+            const instructionsHtml = recipe.instructions.map(step => `<li>${step}</li>`).join('');
+
+            col.innerHTML = `
+            <div class="card h-100 shadow-sm border-0 recipe-card">
+                <div class="card-header bg-gradient bg-primary text-white p-3">
+                    <h5 class="card-title mb-0 fw-bold">${recipe.name}</h5>
+                    <div class="small mt-1 opacity-75">
+                         <i class="bi bi-clock"></i> ${recipe.time} • 
+                         <i class="bi bi-fire"></i> ${recipe.calories || 'N/A'} •
+                         <span class="badge bg-light text-primary bg-opacity-25 border border-white border-opacity-25">${recipe.difficulty}</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    ${recipe.uses_expiring ? '<div class="mb-3"><span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="bi bi-star-fill"></i> Uses Expiring Items</span></div>' : ''}
+                    
+                    <div class="mb-3">
+                        <h6 class="text-primary fw-bold text-uppercase small border-bottom pb-1">Ingredients</h6>
+                        <ul class="list-unstyled small mb-0 ps-2" style="border-left: 3px solid #e9ecef;">
+                            ${ingredientsHtml}
+                        </ul>
+                    </div>
+                    
+                    <div>
+                        <h6 class="text-primary fw-bold text-uppercase small border-bottom pb-1">Instructions</h6>
+                        <ol class="small ps-3 mb-0 text-muted">
+                            ${instructionsHtml}
+                        </ol>
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0 pt-0 pb-3">
+                    <div class="d-grid">
+                        <button class="btn btn-outline-primary btn-save" onclick="saveRecipe(this, ${index})">
+                            <i class="bi bi-bookmark"></i> Save Recipe
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+            // Store recipe data on the button for saving
+            const btn = col.querySelector('.btn-save');
+            btn.dataset.recipe = JSON.stringify(recipe);
+
+            container.appendChild(col);
+        });
+    }
+
+    async function saveRecipe(btn, index) {
+        const recipe = JSON.parse(btn.dataset.recipe);
+        btn.disabled = true;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving...';
+
+        try {
+            // Convert ingredients array to object for backend compatibility
+            const ingredientsObj = {};
+            recipe.ingredients.forEach(ing => {
+                ingredientsObj[ing] = "1"; // Default quantity
+            });
+
+            const response = await fetch("{% url 'save_recipe' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    recipe_name: recipe.name,
+                    instructions: recipe.instructions.join('\n'),
+                    ingredients: ingredientsObj,
+                    calories: recipe.calories || ''
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                btn.className = 'btn btn-success';
+                btn.innerHTML = '<i class="bi bi-check-circle"></i> Saved';
+            } else {
+                alert('Error: ' + data.message);
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        } catch (error) {
+            console.error('Save error:', error);
+            alert('Failed to save recipe.');
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+
+<style>
+    @keyframes pulse {
+        0% {
+            opacity: 0.5;
+        }
+
+        50% {
+            opacity: 1;
+        }
+
+        100% {
+            opacity: 0.5;
+        }
+    }
+
+    .animate-pulse {
+        animation: pulse 2s infinite;
+    }
+
+    .bg-gradient {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    }
+
+    .recipe-card {
+        transition: transform 0.2s;
+    }
+
+    .recipe-card:hover {
+        transform: translateY(-5px);
+    }
+</style>
+{% endblock %}

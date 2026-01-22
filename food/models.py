@@ -16,7 +16,7 @@ class GroceryType(models.Model):
 class Grocery(models.Model):
     grocery_name = models.CharField(max_length=200)
     ex_date = models.DateField()
-    quantity = models.PositiveIntegerField(default=1)
+    quantity = models.FloatField(default=1.0)
     grocerie_type = models.ForeignKey(GroceryType, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
 
@@ -46,6 +46,7 @@ class Ingredient(models.Model):
 class Receipe(models.Model):
     name = models.CharField(max_length=200, default="Unnamed Recipe")
     description = models.TextField(blank=True, null=True)
+    calories = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
         return self.name
