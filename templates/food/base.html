@@ -21,7 +21,7 @@
 <body style="font-family: 'Inter', sans-serif; background-color: #f8f9fa;">
 
 
-  
+
 
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top shadow-sm"
@@ -35,6 +35,7 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    {% if user.is_authenticated %}
                     <li class="nav-item"><a class="nav-link" href="{% url 'index' %}">My Kitchen</a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'shopping' %}">Shopping List</a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'suggest_recipes' %}">
@@ -50,6 +51,7 @@
                             <i class="bi bi-bookmark"></i> Saved Recipes
                         </a></li>
                     <li class="nav-item"><a class="nav-link" href="{% url 'index' %}">Manage Groceries</a></li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                     {% if user.is_authenticated %}
@@ -73,7 +75,7 @@
             </div>
         </div>
     </nav>
-  <!-- MESSAGE ALERTS -->
+    <!-- MESSAGE ALERTS -->
     {% if messages %}
     {% for message in messages %}
     <div class="alert alert-{{ message.tags }} alert-dismissible fade show m-3 shadow-sm" role="alert">

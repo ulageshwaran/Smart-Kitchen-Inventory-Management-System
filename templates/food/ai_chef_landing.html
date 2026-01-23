@@ -233,7 +233,8 @@
                     recipe_name: recipe.name,
                     instructions: recipe.instructions.join('\n'),
                     ingredients: ingredientsObj,
-                    calories: recipe.calories || ''
+                    calories: recipe.calories || '',
+                    macros: recipe.macros || {}
                 })
             });
 

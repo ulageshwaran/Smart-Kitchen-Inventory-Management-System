@@ -237,6 +237,41 @@
     </div>
 
     <div class="recipe-main-content">
+        <!-- Macros Section -->
+        {% if recipe.calories or recipe.protein %}
+        <div class="recipe-section mb-4">
+            <div class="recipe-section-heading">
+                <i class="bi bi-fire"></i> Nutrition Info
+            </div>
+            <div class="d-flex flex-wrap gap-4 text-center">
+                {% if recipe.calories %}
+                <div class="p-4 rounded-3 bg-light border flex-grow-1">
+                    <div class="text-uppercase text-muted fw-bold small mb-1">Calories</div>
+                    <div class="h3 mb-0 text-primary">{{ recipe.calories }}</div>
+                </div>
+                {% endif %}
+                {% if recipe.protein %}
+                <div class="p-4 rounded-3 bg-light border flex-grow-1">
+                    <div class="text-uppercase text-muted fw-bold small mb-1">Protein</div>
+                    <div class="h3 mb-0 text-dark">{{ recipe.protein }}</div>
+                </div>
+                {% endif %}
+                {% if recipe.carbs %}
+                <div class="p-4 rounded-3 bg-light border flex-grow-1">
+                    <div class="text-uppercase text-muted fw-bold small mb-1">Carbs</div>
+                    <div class="h3 mb-0 text-dark">{{ recipe.carbs }}</div>
+                </div>
+                {% endif %}
+                {% if recipe.fats %}
+                <div class="p-4 rounded-3 bg-light border flex-grow-1">
+                    <div class="text-uppercase text-muted fw-bold small mb-1">Fats</div>
+                    <div class="h3 mb-0 text-dark">{{ recipe.fats }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Description & Instructions -->
         {% if recipe.description %}
         <div class="recipe-section">

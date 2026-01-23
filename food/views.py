@@ -55,8 +55,10 @@ def add_expiry_warnings(request):
 # HOME / INDEX - WITH EXPIRY WARNINGS
 # ============================================
 
-@login_required
 def index(request):
+    if not request.user.is_authenticated:
+        return render(request, 'food/landing.html')
+
     search_query = request.GET.get('search', '').strip()
     groceries = Grocery.objects.filter(user=request.user).select_related('grocerie_type')
     
@@ -375,10 +377,16 @@ def save_recipe(request):
         try:
             data = json.loads(request.body)
             
+            # Extract macros if available
+            macros = data.get('macros', {})
+            
             recipe = Receipe.objects.create(
                 name=data.get('recipe_name', 'Unnamed Recipe'),
                 description=data.get('instructions', ''),
-                calories=data.get('calories', '')
+                calories=data.get('calories', ''),
+                protein=macros.get('protein', ''),
+                carbs=macros.get('carbs', ''),
+                fats=macros.get('fats', '')
             )
             
             # Save ingredients

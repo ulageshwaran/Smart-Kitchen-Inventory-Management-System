@@ -47,6 +47,9 @@ class Receipe(models.Model):
     name = models.CharField(max_length=200, default="Unnamed Recipe")
     description = models.TextField(blank=True, null=True)
     calories = models.CharField(max_length=100, blank=True, null=True)
+    protein = models.CharField(max_length=100, blank=True, null=True)
+    carbs = models.CharField(max_length=100, blank=True, null=True)
+    fats = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
         return self.name
