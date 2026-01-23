@@ -162,6 +162,22 @@
                 <div class="card-body">
                     ${recipe.uses_expiring ? '<div class="mb-3"><span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="bi bi-star-fill"></i> Uses Expiring Items</span></div>' : ''}
                     
+                    ${recipe.macros ? `
+                    <div class="mb-3 d-flex gap-2 justify-content-around border-bottom pb-3">
+                        <div class="text-center">
+                            <small class="text-muted d-block" style="font-size: 0.7rem;">PROTEIN</small>
+                            <span class="fw-bold text-dark">${recipe.macros.protein}</span>
+                        </div>
+                        <div class="text-center">
+                            <small class="text-muted d-block" style="font-size: 0.7rem;">CARBS</small>
+                            <span class="fw-bold text-dark">${recipe.macros.carbs}</span>
+                        </div>
+                        <div class="text-center">
+                            <small class="text-muted d-block" style="font-size: 0.7rem;">FATS</small>
+                            <span class="fw-bold text-dark">${recipe.macros.fats}</span>
+                        </div>
+                    </div>` : ''}
+                    
                     <div class="mb-3">
                         <h6 class="text-primary fw-bold text-uppercase small border-bottom pb-1">Ingredients</h6>
                         <ul class="list-unstyled small mb-0 ps-2" style="border-left: 3px solid #e9ecef;">

@@ -25,12 +25,12 @@
         border-radius: 12px;
         overflow: hidden;
         transition: all 0.3s ease;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
 
     .recipe-list-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
         border-color: #667eea;
     }
 
@@ -60,6 +60,7 @@
         margin-bottom: 1rem;
         display: -webkit-box;
         -webkit-line-clamp: 2;
+        line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
@@ -151,39 +152,40 @@
 </div>
 
 {% if recipes %}
-    <div class="recipes-grid">
-        {% for recipe in recipes %}
-        <div class="recipe-list-card">
-            <div class="recipe-card-header">
-                <h3>{{ recipe.name }}</h3>
+<div class="recipes-grid">
+    {% for recipe in recipes %}
+    <div class="recipe-list-card">
+        <div class="recipe-card-header">
+            <h3>{{ recipe.name }}</h3>
+        </div>
+        <div class="recipe-card-body">
+            {% if recipe.description %}
+            <div class="recipe-description">
+                {{ recipe.description|truncatewords:20 }}
             </div>
-            <div class="recipe-card-body">
-                {% if recipe.description %}
-                <div class="recipe-description">
-                    {{ recipe.description|truncatewords:20 }}
-                </div>
-                {% endif %}
-                <div class="recipe-actions">
-                    <a href="{% url 'recipe_detail' recipe.id %}" class="btn-view">
-                        <i class="bi bi-eye"></i> View
-                    </a>
-                    <button class="btn-delete" onclick="deleteRecipeCard({{ recipe.id }}, '{{ recipe.name|escapejs }}', this)">
-                        <i class="bi bi-trash"></i> Delete
-                    </button>
-                </div>
+            {% endif %}
+            <div class="recipe-actions">
+                <a href="{% url 'recipe_detail' recipe.id %}" class="btn-view">
+                    <i class="bi bi-eye"></i> View
+                </a>
+                <button class="btn-delete" data-id="{{ recipe.id }}" data-name="{{ recipe.name }}"
+                    onclick="deleteRecipeCard(this.dataset.id, this.dataset.name, this)">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
             </div>
         </div>
-        {% endfor %}
     </div>
+    {% endfor %}
+</div>
 {% else %}
-    <div class="no-recipes">
-        <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
-        <p style="margin-top: 1rem; font-size: 1.1rem;">No saved recipes yet</p>
-        <p style="color: #999; margin-bottom: 1.5rem;">Start by generating AI recipes from your expiring ingredients</p>
-        <a href="{% url 'suggest_recipes' %}" class="btn-create">
-            <i class="bi bi-lightning"></i> Generate Recipes
-        </a>
-    </div>
+<div class="no-recipes">
+    <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+    <p style="margin-top: 1rem; font-size: 1.1rem;">No saved recipes yet</p>
+    <p style="color: #999; margin-bottom: 1.5rem;">Start by generating AI recipes from your expiring ingredients</p>
+    <a href="{% url 'suggest_recipes' %}" class="btn-create">
+        <i class="bi bi-lightning"></i> Generate Recipes
+    </a>
+</div>
 {% endif %}
 
 <script>
@@ -205,7 +207,7 @@
                     const card = button.closest('.recipe-list-card');
                     card.style.transition = 'opacity 0.3s ease';
                     card.style.opacity = '0';
-                    
+
                     setTimeout(() => {
                         card.remove();
                         // Check if any recipes are left

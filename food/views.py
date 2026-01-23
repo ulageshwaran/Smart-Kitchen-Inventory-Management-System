@@ -303,6 +303,7 @@ Example format:
         "time": "30 mins",
         "difficulty": "Easy",
         "calories": "300 kcal",
+        "macros": {{ "protein": "20g", "carbs": "45g", "fats": "15g" }},
         "uses_expiring": true
     }}
 ]
@@ -523,11 +524,14 @@ def analyze_food_image(image_data):
         # simplistic handling: image_data is base64 string
         
         prompt = """Analyze this food image and provide:
-1. Name of the dish/food
-2. Estimated calories (total or per serving)
-3. Main ingredients visible
-4. Nutritional breakdown (Protein, Carbs, Fat - estimated)
-5. Healthiness rating (1-10) and brief explanation
+Name of the dish/food
+Estimated calories (total or per serving)
+Main ingredients visible
+Nutritional breakdown:
+   - Protein (approx g)
+   - Carbs (approx g)
+   - Fats (approx g)
+Healthiness rating (1-10) and brief explanation
 
 Format the response in clear Markdown."""
 
