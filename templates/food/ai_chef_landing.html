@@ -59,6 +59,10 @@
         <!-- Preferences Form -->
         <div class="card shadow-sm mb-4 border-0">
             <div class="card-body">
+                <div class="mb-3">
+                    <label for="servings" class="form-label fw-bold">Number of People to Serve</label>
+                    <input type="number" class="form-control" id="servings" value="2" min="1" max="20">
+                </div>
                 <label for="preferences" class="form-label fw-bold">Dietary Preferences or Cravings (Optional)</label>
                 <textarea class="form-control" id="preferences" rows="2"
                     placeholder="e.g., Vegetarian, low carb, spicy, I want a soup..."></textarea>
@@ -101,6 +105,7 @@
 <script>
     document.getElementById('generateBtn').addEventListener('click', async function () {
         const preferences = document.getElementById('preferences').value;
+        const servings = document.getElementById('servings').value;
         const workspace = document.getElementById('chefWorkspace');
         const loading = document.getElementById('loadingState');
         const results = document.getElementById('resultsContainer');
@@ -111,28 +116,58 @@
         loading.classList.remove('d-none');
 
         try {
-            const response = await fetch("{% url 'generate_recipes_api' %}", {
+            const url = "{% url 'generate_recipes_api' %}";
+            console.log("Fetching URL:", url);
+
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': getCookie('csrftoken')
                 },
-                body: JSON.stringify({ preferences: preferences })
+                body: JSON.stringify({
+                    preferences: preferences,
+                    servings: servings
+                })
             });
 
-            const data = await response.json();
+            console.log("Response Status:", response.status);
 
-            if (data.status === 'success') {
-                loading.classList.add('d-none');
-                renderRecipes(data.recipes);
-                results.classList.remove('d-none');
-            } else {
-                alert('Error: ' + data.message);
+            const text = await response.text();
+            console.log("Response Text:", text.substring(0, 200)); // Log first 200 chars
+
+            // Check if response is HTML (likely redirected to login page)
+            if (response.redirected || text.trim().startsWith('<')) {
+                alert('Session expired. Please log in again.');
+                window.location.href = "{% url 'signin' %}";
+                return;
+            }
+
+            try {
+                const data = JSON.parse(text);
+
+                if (data.status === 'success') {
+                    loading.classList.add('d-none');
+                    renderRecipes(data.recipes);
+                    results.classList.remove('d-none');
+                } else {
+                    alert('Error: ' + data.message);
+                    location.reload();
+                }
+            } catch (e) {
+                console.error("JSON Parse Error:", e);
+                // If not JSON, it's likely an HTML error page
+                if (!response.ok) {
+                    alert(`Server Error (${response.status}): ${text.substring(0, 100)}...`);
+                } else {
+                    alert(`Unexpected response format: ${e.message}\nRaw Text Start: ${text.substring(0, 100)}`);
+                }
                 location.reload();
             }
+
         } catch (error) {
-            console.error('Error:', error);
-            alert('Failed to connect to AI Chef.');
+            console.error('Network Error:', error);
+            alert('Failed to connect to AI Chef (Network Error). Check console for details.');
             location.reload();
         }
     });
@@ -145,6 +180,36 @@
             const col = document.createElement('div');
             col.className = 'col-md-6 col-lg-4';
 
+            // -----------------------------------------------------
+            // 1. Normalize Ingredients IN-PLACE (for UI + Save)
+            // -----------------------------------------------------
+            let ingredients = recipe.ingredients;
+            if (!Array.isArray(ingredients)) {
+                if (typeof ingredients === 'object' && ingredients !== null) {
+                    // Convert {"Name": "Qty"} -> ["Qty Name"] for better backend parsing
+                    // e.g. {"Milk": "1 cup"} -> "1 cup Milk"
+                    recipe.ingredients = Object.entries(ingredients).map(([k, v]) => `${v} ${k}`);
+                } else if (typeof ingredients === 'string') {
+                    recipe.ingredients = [ingredients];
+                } else {
+                    recipe.ingredients = [];
+                }
+            }
+            // Ensure simple strings
+            recipe.ingredients = recipe.ingredients.map(String);
+
+            // -----------------------------------------------------
+            // 2. Normalize Instructions IN-PLACE (for UI + Save)
+            // -----------------------------------------------------
+            let instructions = recipe.instructions;
+            if (!Array.isArray(instructions)) {
+                // Split by newline or steps if string
+                recipe.instructions = String(instructions || '').split(/\n|\d+\.\s+/).filter(s => s.trim().length > 0);
+            }
+
+            // -----------------------------------------------------
+            // 3. Render
+            // -----------------------------------------------------
             // Build ingredients list HTML
             const ingredientsHtml = recipe.ingredients.map(ing => `<li>${ing}</li>`).join('');
             const instructionsHtml = recipe.instructions.map(step => `<li>${step}</li>`).join('');
@@ -155,7 +220,8 @@
                     <h5 class="card-title mb-0 fw-bold">${recipe.name}</h5>
                     <div class="small mt-1 opacity-75">
                          <i class="bi bi-clock"></i> ${recipe.time} • 
-                         <i class="bi bi-fire"></i> ${recipe.calories || 'N/A'} •
+                         <i class="bi bi-fire"></i> ${recipe.calories || 'N/A'} / serving •
+                         <i class="bi bi-people"></i> Serves ${recipe.servings || '2'} •
                          <span class="badge bg-light text-primary bg-opacity-25 border border-white border-opacity-25">${recipe.difficulty}</span>
                     </div>
                 </div>
@@ -163,18 +229,23 @@
                     ${recipe.uses_expiring ? '<div class="mb-3"><span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="bi bi-star-fill"></i> Uses Expiring Items</span></div>' : ''}
                     
                     ${recipe.macros ? `
-                    <div class="mb-3 d-flex gap-2 justify-content-around border-bottom pb-3">
-                        <div class="text-center">
-                            <small class="text-muted d-block" style="font-size: 0.7rem;">PROTEIN</small>
-                            <span class="fw-bold text-dark">${recipe.macros.protein}</span>
+                    <div class="mb-3 border-bottom pb-3">
+                        <div class="text-center mb-2">
+                             <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">Nutritional Info (Per Serving)</small>
                         </div>
-                        <div class="text-center">
-                            <small class="text-muted d-block" style="font-size: 0.7rem;">CARBS</small>
-                            <span class="fw-bold text-dark">${recipe.macros.carbs}</span>
-                        </div>
-                        <div class="text-center">
-                            <small class="text-muted d-block" style="font-size: 0.7rem;">FATS</small>
-                            <span class="fw-bold text-dark">${recipe.macros.fats}</span>
+                        <div class="d-flex gap-2 justify-content-around">
+                            <div class="text-center">
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">PROTEIN</small>
+                                <span class="fw-bold text-dark">${recipe.macros.protein}</span>
+                            </div>
+                            <div class="text-center">
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">CARBS</small>
+                                <span class="fw-bold text-dark">${recipe.macros.carbs}</span>
+                            </div>
+                            <div class="text-center">
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">FATS</small>
+                                <span class="fw-bold text-dark">${recipe.macros.fats}</span>
+                            </div>
                         </div>
                     </div>` : ''}
                     
@@ -202,7 +273,7 @@
             </div>
         `;
 
-            // Store recipe data on the button for saving
+            // Store (now normalized) recipe data on the button for saving
             const btn = col.querySelector('.btn-save');
             btn.dataset.recipe = JSON.stringify(recipe);
 

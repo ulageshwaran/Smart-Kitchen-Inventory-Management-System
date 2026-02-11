@@ -2,22 +2,25 @@ from django.contrib.auth.models import User
 from django.db import models
 from datetime import date, timedelta
 
-# Grocery Categories
-class GroceryType(models.Model):
-    type_name = models.CharField(max_length=100)
-
-    class Meta:
-        db_table = 'food_groceries_type'  # matches existing table
-
-    def __str__(self):
-        return self.type_name
-
-
 class Grocery(models.Model):
+    CATEGORY_CHOICES = (
+        ('Vegetables', 'Vegetables'),
+        ('Fruits', 'Fruits'),
+        ('Dairy', 'Dairy'),
+        ('Meat', 'Meat/Fish'),
+        ('Grains', 'Grains/Pasta'),
+        ('Spices', 'Spices'),
+        ('Condiments & Seasonings', 'Condiments & Seasonings'),
+        ('Beverages', 'Beverages'),
+        ('Snacks', 'Snacks'),
+        ('Others', 'Others'),
+    )
+
     grocery_name = models.CharField(max_length=200)
     ex_date = models.DateField()
     quantity = models.FloatField(default=1.0)
-    grocerie_type = models.ForeignKey(GroceryType, on_delete=models.CASCADE)
+    unit = models.CharField(max_length=20, default='unit')
+    grocerie_type = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='Others')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
 
     class Meta:

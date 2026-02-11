@@ -69,10 +69,10 @@
                         </td>
                         <td>
                             <span class="badge bg-light text-secondary rounded-pill border">
-                                {{ grocery.grocerie_type.type_name }}
+                                {{ grocery.grocerie_type }}
                             </span>
                         </td>
-                        <td>{{ grocery.quantity }}</td>
+                        <td>{{ grocery.quantity }} {{ grocery.unit }}</td>
                         <td>
                             <span class="text-muted fw-bold small">{{ grocery.ex_date|date:"M d, Y" }}</span>
                         </td>

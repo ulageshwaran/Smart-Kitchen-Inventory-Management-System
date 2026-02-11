@@ -1,5 +1,5 @@
 from django import forms
-from .models import Grocery, GroceryType, Receipe, Receipe_Ingredients, Ingredient, ShoppingList
+from .models import Grocery, Receipe, Receipe_Ingredients, Ingredient, ShoppingList
 
 
 # Grocery Form

@@ -441,38 +441,60 @@
             const qtyNeeded = cand.quantity_needed || 1;
 
             // Inventory Options
-            let optionsHtml = '<option value="">-- No Match/Skip --</option>';
+            let optionsHtml = '<option value="" data-unit="">-- No Match/Skip --</option>';
             inventoryData.forEach(item => {
                 const selected = cand.best_match_id === item.id ? 'selected' : '';
-                optionsHtml += `<option value="${item.id}" ${selected}>${item.name} (${item.qty} ${item.unit})</option>`;
+                optionsHtml += `<option value="${item.id}" data-unit="${item.unit}" ${selected}>${item.name} (${item.qty} ${item.unit})</option>`;
             });
 
             tr.innerHTML = `
                 <td>
                     <strong>${cand.ingredient_name}</strong><br>
-                    <small class="text-muted">Need: ${qtyNeeded} ${cand.unit || ''}</small>
+                    <small class="text-muted">Need: ${cand.quantity_needed} ${cand.unit || ''}</small>
+                    ${cand.conversion_note ? `<br><small class="text-info"><i class="bi bi-arrow-repeat"></i> ${cand.conversion_note}</small>` : ''}
                 </td>
                 <td>
-                    <select class="form-select form-select-sm inventory-select" data-needed="${qtyNeeded}">
+                    <select class="form-select form-select-sm inventory-select" data-needed="${cand.deduct_qty_suggestion || cand.quantity_needed}">
                         ${optionsHtml}
                     </select>
                 </td>
                 <td>
-                    <input type="number" step="0.1" class="form-control form-control-sm deduct-qty" 
-                           value="${cand.best_match_id ? qtyNeeded : 0}" 
-                           min="0" style="width: 80px;">
+                    <div class="input-group input-group-sm">
+                        <input type="number" step="0.01" class="form-control deduct-qty" 
+                               value="${cand.best_match_id ? (cand.deduct_qty_suggestion || cand.quantity_needed) : 0}" 
+                               min="0" style="width: 70px;">
+                        <span class="input-group-text deduct-unit"></span>
+                    </div>
                 </td>
             `;
             tbody.appendChild(tr);
         });
 
-        // Add change listener to update quantity input when selection changes
+        // Add change listener to update quantity input and unit label when selection changes
         document.querySelectorAll('.inventory-select').forEach(select => {
+            // Function to update unit label
+            const updateUnit = (sel) => {
+                const row = sel.closest('tr');
+                const unitLabel = row.querySelector('.deduct-unit');
+                const selectedOption = sel.options[sel.selectedIndex];
+                const unit = selectedOption.getAttribute('data-unit') || '';
+                unitLabel.textContent = unit;
+            };
+
+            // Initialize
+            updateUnit(select);
+
             select.addEventListener('change', function () {
                 const row = this.closest('tr');
                 const qtyInput = row.querySelector('.deduct-qty');
+
+                updateUnit(this);
+
                 if (this.value) {
                     // Default to needed quantity (supports floats)
+                    // Note: Ideally we re-calculate conversion here if the user switches to a DIFFERENT item with a DIFFERENT unit
+                    // But for now, we just reset to the suggestion or needed.
+                    // A full fix would be to re-trigger conversion logic in JS or backend.
                     qtyInput.value = this.dataset.needed;
                 } else {
                     qtyInput.value = 0;

@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
-from .models import Grocery, GroceryType, ShoppingList, Receipe, Receipe_Ingredients, Ingredient
+from .models import Grocery, ShoppingList, Receipe, Receipe_Ingredients, Ingredient
 from .forms import GroceryForm, ShoppingListForm
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
@@ -12,7 +12,75 @@ import json
 import requests
 import os
 import base64
+import time
+import random
+from dotenv import load_dotenv
 
+def get_gemini_api_key():
+    """Retrieve and validate Gemini API key from environment."""
+    load_dotenv()
+    key = os.environ.get('GEMINI_API_KEY', '').strip()
+    return key if key else None
+
+
+def get_list_from_json(data):
+    """
+    Recursively find a list of recipes in a nested JSON response.
+    Flexible enough to handle {"recipes": [...]}, {"recipes": {"recipes": [...]}}, or just [...]
+    """
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        # 1. Check direct 'recipes' key first (most common)
+        if 'recipes' in data:
+            val = data['recipes']
+            if isinstance(val, list): return val
+            if isinstance(val, dict): return get_list_from_json(val)
+            
+        # 2. Search other keys
+        for key, value in data.items():
+            if isinstance(value, list) and 'recipes' in key.lower():
+                return value
+            if isinstance(value, dict) or isinstance(value, list):
+                # Avoid infinite recursion if possible, but JSON is tree-like
+                found = get_list_from_json(value)
+                if found: return found
+    return []
+
+
+
+
+def call_gemini_with_retry(url, payload, headers, max_retries=3):
+    """
+    Call Gemini API with exponential backoff retry logic for 503/429 errors.
+    """
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            
+            if response.status_code == 200:
+                return response
+                
+            # If service unavailable or too many requests, retry
+            if response.status_code in [503, 429, 500, 502, 504]:
+                if attempt < max_retries - 1:
+                    sleep_time = (2 ** attempt) + random.uniform(0, 1)
+                    print(f"API Error {response.status_code}. Retrying in {sleep_time:.2f}s...")
+                    time.sleep(sleep_time)
+                else:
+                    return response # Return the failed response after retries
+            else:
+                return response # Return other 4xx errors immediately
+                
+        except (requests.Timeout, requests.ConnectionError) as e:
+            if attempt < max_retries - 1:
+                sleep_time = (2 ** attempt) + random.uniform(0, 1)
+                print(f"Network Error {str(e)}. Retrying in {sleep_time:.2f}s...")
+                time.sleep(sleep_time)
+            else:
+                raise e # Raise exception after last attempt
+                
+    return None # Should not reach here
 
 # ============================================
 # EXPIRY WARNING SYSTEM
@@ -28,13 +96,13 @@ def get_expiry_warnings(user):
     expired = Grocery.objects.filter(
         user=user,
         ex_date__lt=today
-    ).select_related('grocerie_type')
+    )
     
     expiring_soon = Grocery.objects.filter(
         user=user,
         ex_date__gte=today,
         ex_date__lte=today + timedelta(days=7)
-    ).select_related('grocerie_type')
+    )
     
     return {
         'expired': expired,
@@ -60,12 +128,12 @@ def index(request):
         return render(request, 'food/landing.html')
 
     search_query = request.GET.get('search', '').strip()
-    groceries = Grocery.objects.filter(user=request.user).select_related('grocerie_type')
+    groceries = Grocery.objects.filter(user=request.user)
     
     if search_query:
         groceries = groceries.filter(
             Q(grocery_name__icontains=search_query) |   
-            Q(grocerie_type__type_name__icontains=search_query)
+            Q(grocerie_type__icontains=search_query)
         )
     
     groceries = groceries.order_by('ex_date')
@@ -105,14 +173,14 @@ def get_ai_recipe_suggestion(ingredients_list, preferences=""):
     
     try:
         # Get API key from environment variable
-        api_key = os.environ.get('GEMINI_API_KEY')
+        api_key = get_gemini_api_key()
         if not api_key:
             return None, "Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
         
         # Gemini API endpoint - use latest model
         # Gemini API endpoint - use latest model
-        # Using gemini-flash-latest (fastest, free tier)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        # Using gemini-3-flash-preview (fastest, free tier)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
         
         ingredients_str = ', '.join(ingredients_list)
         
@@ -222,13 +290,15 @@ def suggest_recipes(request):
     today = date.today()
     
     # Get all user groceries
-    all_groceries = Grocery.objects.filter(user=user).select_related('grocerie_type')
+    all_groceries = Grocery.objects.filter(user=user)
     
     expiring_soon = []
     others = []
     
     for g in all_groceries:
-        if g.is_expiring_soon or g.is_expired:
+        if g.is_expired:
+            continue
+        if g.is_expiring_soon:
             expiring_soon.append(g)
         else:
             others.append(g)
@@ -248,6 +318,7 @@ def generate_recipes_api(request):
     try:
         data = json.loads(request.body)
         preferences = data.get('preferences', '')
+        servings = data.get('servings', '2')
         
         user = request.user
         today = date.today()
@@ -259,7 +330,9 @@ def generate_recipes_api(request):
         others = []
         
         for g in groceries:
-            if g.is_expiring_soon or g.is_expired:
+            if g.is_expired:
+                continue
+            if g.is_expiring_soon:
                 expiring.append(g.grocery_name)
             else:
                 others.append(g.grocery_name)
@@ -271,16 +344,17 @@ def generate_recipes_api(request):
             }, status=400)
             
         # Call Gemini
-        api_key = os.environ.get('GEMINI_API_KEY')
+        api_key = get_gemini_api_key()
         if not api_key:
             return JsonResponse({'status': 'error', 'message': 'API key not configured'}, status=500)
             
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
         
         expiring_str = ", ".join(expiring)
         others_str = ", ".join(others)
         
         prompt = f"""As a creative chef, generate 3 detailed recipes based on these available ingredients.
+        Create these recipes specifically for {servings} people. Adjust all ingredient quantities accordingly.
         
 CRITICAL PRIORITY (Use these if possible as they are expiring):
 {expiring_str if expiring else 'None'}
@@ -290,33 +364,39 @@ OTHER AVAILABLE INGREDIENTS:
 
 User Preferences: {preferences if preferences else 'None'}
 
-Rules:
-1. You don't have to use ALL ingredients, but try to use the PRIORITY ones to reduce waste.
-2. You can assume basic pantry staples (oil, salt, pepper, water) are available.
-
-Return the response ONLY as a valid JSON list of objects. No markdown formatting.
-Example format:
-[
-    {{
-        "name": "Recipe Name",
-        "description": "Brief description",
-        "ingredients": ["1 cup Rice", "2 Tomatoes"],
-        "instructions": ["Step 1...", "Step 2..."],
-        "time": "30 mins",
-        "difficulty": "Easy",
-        "calories": "300 kcal",
-        "macros": {{ "protein": "20g", "carbs": "45g", "fats": "15g" }},
-        "uses_expiring": true
-    }}
-]
-"""
+        Rules:
+        1. You don't have to use ALL ingredients, but try to use the PRIORITY ones to reduce waste.
+        2. You can assume common pantry staples (oil, salt, pepper, water, basic spices) are available.
+        3. STRICT RESOURCE DEDUCTION RULE: 
+           - You MUST provide ingredient quantities in standard MASS (g, kg) or VOLUME (ml, l, tbsp, tsp) units.
+           - DO NOT use counts like "1 Tomato" or "2 Onions". Instead use "Tomato (150g)" or "Onion (small, 100g)".
+           - This is critical for inventory tracking.
+           - Exceptions: Eggs (use "unit" or "count"), Bread (use "slices").
+        4. Format the output valid JSON (NO markdown backticks) with this structure:
+        {{
+            "recipes": [
+                {{
+                    "name": "Recipe Name",
+                    "description": "Brief appetizing description",
+                    "calories": "Total Calories",
+                    "macros": {{ "protein": "10g", "carbs": "20g", "fats": "5g" }},
+                    "ingredients": {{
+                        "Ingredient Name (e.g. Tomato 150g)": "Quantity + Unit only (e.g. 150g) or just 150g", 
+                         // IMPORTANT: The key should be the full descriptive name. The value is just for display.
+                    }},
+                    "instructions": "Step 1... Step 2..."
+                }}
+            ]
+        }}
+        """
 
         payload = {
             "contents": [{"parts": [{"text": prompt}]}]
         }
         
         headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        # Use retry logic
+        response = call_gemini_with_retry(url, payload, headers)
         
         if response.status_code == 200:
             data = response.json()
@@ -328,10 +408,11 @@ Example format:
                     text_resp = text_resp.replace('```json', '').replace('```', '').strip()
                     try:
                         recipes_data = json.loads(text_resp)
-                        return JsonResponse({'status': 'success', 'recipes': recipes_data})
+                        recipes_list = get_list_from_json(recipes_data)
+                        return JsonResponse({'status': 'success', 'recipes': recipes_list})
                     except json.JSONDecodeError:
                         # Fallback if AI fails JSON format
-                        return JsonResponse({'status': 'error', 'message': 'AI response format error'}, status=500)
+                        return JsonResponse({'status': 'error', 'message': 'AI response format format error'}, status=500)
             return JsonResponse({'status': 'error', 'message': 'AI returned no content'}, status=500)
         else:
             return JsonResponse({'status': 'error', 'message': f'API Error: {response.text}'}, status=500)
@@ -370,6 +451,142 @@ def delete_recipe_view(request, pk):
     
     return JsonResponse({'error': 'Invalid request'}, status=400)
 
+def parse_ingredient_string(ingredient_str):
+    """
+    Parse ingredient string into quantity, unit, and name.
+    Example: "1/2 cup Milk" -> (0.5, "cup", "Milk")
+    Example: "200g Chicken" -> (200.0, "g", "Chicken")
+    """
+    import re
+    
+    ingredient_str = ingredient_str.strip()
+    qty = 1.0
+    unit = 'as needed'
+    name = ingredient_str
+    
+    # 1. Try to find number at start (including fractions)
+    # Match: "1 1/2", "1.5", "1/2", "1"
+    match = re.match(r'^(\d+\s+\d+/\d+|\d+/\d+|\d+\.\d+|\d+)\s*(.*)', ingredient_str)
+    
+    if match:
+        num_str = match.group(1)
+        rest = match.group(2).strip()
+        
+        # Convert fraction to float
+        try:
+            if ' ' in num_str and '/' in num_str: # Mixed fraction "1 1/2"
+                whole, frac = num_str.split()
+                num, den = frac.split('/')
+                qty = float(whole) + (float(num) / float(den))
+            elif '/' in num_str: # Fraction "1/2"
+                num, den = num_str.split('/')
+                qty = float(num) / float(den)
+            else: # decimal or int
+                qty = float(num_str)
+        except ValueError:
+            qty = 1.0 # Fallback
+            
+        # 2. Try to find unit in the rest
+        # Common units
+        units = ['cup', 'cups', 'tbsp', 'tsp', 'g', 'kg', 'ml', 'l', 'oz', 'lb', 'piece', 'pieces', 'slice', 'slices', 'clove', 'cloves', 'pinch', 'bunch', 'packet']
+        
+        # Check if the next word is a unit
+        words = rest.split()
+        if words:
+            potential_unit = words[0].lower().rstrip('s') # simple singularization
+            
+            # Check against list or if it looks like a unit
+            for u in units:
+                if potential_unit == u or potential_unit == u + 's':
+                    unit = u
+                    # Remove unit from name
+                    name = " ".join(words[1:])
+                    break
+            else:
+                 # If not in list, but we extracted a number, keep rest as name
+                 # Might handle cases like "2 Apples" -> qty: 2, unit: 'unit' (default), name: Apples
+                 name = rest
+                 # Optional: treat "Apples" as unit if you want specific behavior, but default 'unit' is safe
+                 if not unit or unit == 'as needed':
+                     unit = 'unit'
+    
+    return qty, unit, name
+    
+def convert_quantity(qty, from_unit, to_unit, item_name=None):
+    """
+    Convert quantity between units. Returns converted quantity or None if impossible.
+    Optional item_name allows specific heuristic conversions (e.g. Bread packet -> slices).
+    """
+    if from_unit == to_unit:
+        return qty
+        
+    # Simplify and strip
+    from_unit = from_unit.strip().lower().rstrip('s')
+    to_unit = to_unit.strip().lower().rstrip('s')
+    
+    # ITEM SPECIFIC CONVERSIONS
+    if item_name:
+        item_name = item_name.lower()
+        
+        # Bread: Packet <-> Slice
+        if 'bread' in item_name:
+            # Assume 1 packet = 15 slices (standard loaf)
+            if from_unit == 'packet' and to_unit == 'slice':
+                return qty * 15
+            if from_unit == 'slice' and to_unit == 'packet':
+                return qty / 15
+                
+        # Leafy Greens/Herbs: Packet <-> Bunch
+        if any(x in item_name for x in ['coriander', 'spinach', 'mint', 'methi', 'palak']):
+             if from_unit == 'packet' and to_unit == 'bunch':
+                 # Assume 1 packet = 1 bunch
+                 return qty 
+             if from_unit == 'bunch' and to_unit == 'packet':
+                 return qty
+
+    # Base units: ml for volume, g for weight
+    volume_to_ml = {
+        'ml': 1, 'l': 1000, 'liter': 1000, 'liters': 1000,
+        'cup': 240, 'cups': 240,
+        'tbsp': 15, 'tablespoon': 15,
+        'tsp': 5, 'teaspoon': 5,
+        'gal': 3785, 'gallon': 3785,
+        'oz': 29.57, 'fluid ounce': 29.57 # Fluid ounce
+    }
+    
+    weight_to_g = {
+        'g': 1, 'gram': 1, 'grams': 1,
+        'kg': 1000, 'kilogram': 1000, 'kilograms': 1000,
+        'lb': 453.59, 'pound': 453.59, 'pounds': 453.59,
+        'oz': 28.35, 'ounce': 28.35, 'ounces': 28.35 # Weight ounce (ambiguous, usually weight in cooking unless specified fl oz)
+    }
+    
+    # Try Volume
+    if from_unit in volume_to_ml and to_unit in volume_to_ml:
+        ml_qty = qty * volume_to_ml[from_unit]
+        return ml_qty / volume_to_ml[to_unit]
+        
+    # Try Weight
+    if from_unit in weight_to_g and to_unit in weight_to_g:
+        g_qty = qty * weight_to_g[from_unit]
+        return g_qty / weight_to_g[to_unit]
+        
+    # Try Weight <-> Volume assumptions (Water density: 1g = 1ml)
+    # This is a Rough approximation for common liquids/solids if direct type mismatch
+    # ml <-> g
+    if (from_unit in volume_to_ml and to_unit in weight_to_g) or (from_unit in weight_to_g and to_unit in volume_to_ml):
+         # Convert to base (ml or g), assume 1:1, then convert to target
+         if from_unit in volume_to_ml:
+             base = qty * volume_to_ml[from_unit] # ml
+             # assume 1ml = 1g
+             return base / weight_to_g[to_unit]
+         else:
+             base = qty * weight_to_g[from_unit] # g
+             # assume 1g = 1ml
+             return base / volume_to_ml[to_unit]
+
+    return None
+
 @login_required
 def save_recipe(request):
     """Save generated recipe to database"""
@@ -392,14 +609,23 @@ def save_recipe(request):
             # Save ingredients
             ingredients_dict = data.get('ingredients', {})
             for ingredient_name in ingredients_dict.keys():
+                # Parse the key itself assuming it might contain the full text "1 cup milk"
+                # OR check if the value has more info. 
+                # Usually `ingredients_dict` keys are just names if from UI bubbles, 
+                # but if coming from AI directly, check format.
+                # Assuming ingredients_dict keys are the full strings like "1 cup Milk" or simplified names.
+                # Let's try to parse the name provided.
+                
+                qty, unit, clean_name = parse_ingredient_string(ingredient_name)
+                
                 ingredient, _ = Ingredient.objects.get_or_create(
-                    name=ingredient_name
+                    name=clean_name
                 )
                 Receipe_Ingredients.objects.create(
                     receipe=recipe,
                     ingredient=ingredient,
-                    quantity=1,
-                    unit='as needed'
+                    quantity=qty,
+                    unit=unit
                 )
             
             return JsonResponse({
@@ -433,7 +659,7 @@ def refine_recipe(request):
                     'message': 'Please specify preferences'
                 }, status=400)
             
-            api_key = os.environ.get('GEMINI_API_KEY')
+            api_key = get_gemini_api_key()
             if not api_key:
                 return JsonResponse({
                     'status': 'error',
@@ -441,7 +667,7 @@ def refine_recipe(request):
                 }, status=400)
             
             # Use same API endpoint as recipe generation
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
             
             prompt = f"""Modify this recipe based on the following preferences: {preferences}
 
@@ -467,11 +693,10 @@ Provide the modified recipe with the same format as before."""
                 }
             }
             
-            headers = {
-                "Content-Type": "application/json"
-            }
-            
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            # Headers already defined
+
+            # Use retry logic
+            response = call_gemini_with_retry(url, payload, headers)
             
             if response.status_code == 200:
                 data = response.json()
@@ -522,11 +747,11 @@ def analyze_food_image(image_data):
     Analyze food image using Gemini Flash Vision
     """
     try:
-        api_key = os.environ.get('GEMINI_API_KEY')
+        api_key = get_gemini_api_key()
         if not api_key:
             return None, "Gemini API key not configured."
             
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
         
         # Determine mime type (assume jpeg if not specified, frontend should handle this)
         # simplistic handling: image_data is base64 string
@@ -558,7 +783,8 @@ Format the response in clear Markdown."""
         }
         
         headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        # Use retry logic
+        response = call_gemini_with_retry(url, payload, headers)
         
         if response.status_code == 200:
             data = response.json()
@@ -608,20 +834,20 @@ def analyze_food_view(request):
 # BILL UPLOAD & ANALYSIS
 # ============================================
 
-def analyze_bill_image(image_data, grocery_types):
+def analyze_bill_image(image_data):
     """
     Analyze bill image using Gemini Flash Vision
     Returns a list of identified items with estimated expiry
     """
     try:
-        api_key = os.environ.get('GEMINI_API_KEY')
+        api_key = get_gemini_api_key()
         if not api_key:
             return None, "Gemini API key not configured."
             
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
         
         # Create category list string
-        categories_str = ", ".join([t.type_name for t in grocery_types])
+        categories_str = ", ".join([c[1] for c in Grocery.CATEGORY_CHOICES])
         
         prompt = f"""Analyze this grocery bill/receipt image and extract ONLY the food/grocery items. 
 Ignore non-food items (like soap, paper towels) and general receipt text (taxes, store name).
@@ -632,15 +858,27 @@ For each food item, provide:
    - Example: "Amul Gold Milk" -> "Milk"
    - Example: "Maggi Noodles" -> "Instant Noodles"
    - Example: "Tata Salt" -> "Salt"
-2. Quantity (default to 1 if not specified)
-3. Estimated Expiry Date (YYYY-MM-DD) - Make a reasonable guess based on the type of food (e.g., Milk: 7 days, Rice: 1 year, Vegetables: 5 days). Today is {date.today()}.
-4. Category - Choose the best match from this list: [{categories_str}]
+2. Calculate Total Quantity & Unit: 
+   - Look for quantity indicators in the item name (e.g., "500ml", "1kg", "200g").
+   - Look for multipliers (e.g., "x2", "2 qty", "2 pcs").
+   - IF multiplier exists: Calculate total (e.g., "Milk 500ml x 2" -> Total 1000ml -> Quantity: 1, Unit: l).
+   - IF no multiplier: Use the size as unit (e.g., "Milk 500ml" -> Quantity: 500, Unit: ml).
+   - IF no size in name: Use the bill's Qty column.
+3. Quantity (Number): The final calculated quantity.
+4. Unit (String):
+   - For BREAD: Use "slice" (assume 12-15 slices per packet). If packet, output "slice" and calculate qty * 15.
+   - For LEAFY VEG (Coriander, Spinach): Use "bunch".
+   - For LIQUIDS: Use "l" or "ml".
+   - For SOLIDS: Use "kg" or "g".
+   - Avoid "packet" or "unit" if a specific mass/volume/count unit exists.
+5. Estimated Expiry Date (YYYY-MM-DD) - Make a reasonable guess based on the type of food (e.g., Milk: 7 days, Rice: 1 year, Vegetables: 5 days). Today is {date.today()}.
+6. Category - Choose the best match from this list: [{categories_str}]
 
 Format the response as a valid JSON list of objects.
 Example format:
 [
-  {{"name": "Milk", "quantity": 1, "expiry": "2024-02-01", "category": "Dairy"}},
-  {{"name": "Basmati Rice", "quantity": 1, "expiry": "2025-01-01", "category": "Grains"}}
+  {{"name": "Milk", "quantity": 1, "unit": "l", "expiry": "2024-02-01", "category": "Dairy"}},
+  {{"name": "Basmati Rice", "quantity": 1, "unit": "kg", "expiry": "2025-01-01", "category": "Grains"}}
 ]
 Return ONLY the JSON. Do not include markdown formatting or backticks.
 """
@@ -660,7 +898,8 @@ Return ONLY the JSON. Do not include markdown formatting or backticks.
         }
         
         headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        # Use retry logic
+        response = call_gemini_with_retry(url, payload, headers)
         
         if response.status_code == 200:
             data = response.json()
@@ -685,7 +924,6 @@ Return ONLY the JSON. Do not include markdown formatting or backticks.
 @login_required
 def upload_bill_view(request):
     """View to upload and analyze grocery bills"""
-    grocery_types = GroceryType.objects.all()
     
     if request.method == 'POST':
         try:
@@ -698,7 +936,7 @@ def upload_bill_view(request):
             if ',' in image_b64:
                 image_b64 = image_b64.split(',')[1]
                 
-            items, error = analyze_bill_image(image_b64, grocery_types)
+            items, error = analyze_bill_image(image_b64)
             
             if error:
                 return JsonResponse({'status': 'error', 'message': error}, status=400)
@@ -706,10 +944,16 @@ def upload_bill_view(request):
             return JsonResponse({
                 'status': 'success',
                 'items': items,
-                'categories': [{'id': t.id, 'name': t.type_name} for t in grocery_types]
+                'categories': [{'id': c[0], 'name': c[1]} for c in Grocery.CATEGORY_CHOICES]
             })
             
         except Exception as e:
+            # Log error
+            with open('debug_errors.log', 'a') as f:
+                import datetime
+                f.write(f"{datetime.datetime.now()}: Error in upload_bill_view: {str(e)}\n")
+                import traceback
+                traceback.print_exc(file=f)
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
             
     return render(request, 'food/upload_bill.html')
@@ -727,22 +971,53 @@ def save_bill_items(request):
             for item in items:
                 # Find or create category (simple fuzzy match could be better, but exact for now)
                 category_name = item.get('category')
-                grocery_type = GroceryType.objects.filter(type_name__iexact=category_name).first()
                 
-                if not grocery_type:
-                    # Fallback to first category or a default "Others" if you have it
-                    grocery_type = GroceryType.objects.first()
+                bg_name = item.get('name', '').strip()
+                ex_date = item.get('expiry')
+                raw_qty = float(item.get('quantity', 1))
+                unit = item.get('unit', 'unit')
                 
-                Grocery.objects.create(
-                    grocery_name=item.get('name'),
-                    ex_date=item.get('expiry'),
-                    quantity=float(item.get('quantity', 1)),
-                    grocerie_type=grocery_type,
-                    user=request.user
-                )
+                # Check for existing item with same name (case-insensitive) for this user
+                existing_item = Grocery.objects.filter(
+                    user=request.user, 
+                    grocery_name__iexact=bg_name
+                ).first()
+                
+                merged = False
+                
+                if existing_item:
+                    # Attempt unit match or conversion
+                    if existing_item.unit.lower() == unit.lower():
+                        existing_item.quantity += raw_qty
+                        merged = True
+                    else:
+                        # Try to convert NEW item unit -> EXISTING item unit
+                        converted_qty = convert_quantity(raw_qty, unit, existing_item.unit, item_name=bg_name)
+                        if converted_qty is not None:
+                            existing_item.quantity += converted_qty
+                            merged = True
+                            
+                    if merged:
+                        # Optional: Update expiry to the newer date if new item expires LATER?
+                        # Or Keep Earliest? 
+                        # Usually, if you add fresh stock to old stock, you still have old stock.
+                        # We will just update quantity and keep the old date warning effective for the old batch.
+                        # Or maybe we can't easily track mixed batches. 
+                        # Let's just save.
+                        existing_item.save()
+                
+                if not merged:
+                    Grocery.objects.create(
+                        grocery_name=bg_name,
+                        ex_date=ex_date,
+                        quantity=raw_qty,
+                        unit=unit,
+                        grocerie_type=category_name if category_name else 'Others',
+                        user=request.user
+                    )
                 saved_count += 1
             
-            messages.success(request, f'Successfully added {saved_count} items to your pantry!')
+            messages.success(request, f'Successfully processed {saved_count} items (merged duplicates where found)!')
             return JsonResponse({'status': 'success', 'count': saved_count})
             
         except Exception as e:
@@ -757,20 +1032,20 @@ def save_bill_items(request):
 
 @login_required
 def add_grocery(request):
-    grocery_types = GroceryType.objects.all()
     
     if request.method == 'POST':
         grocery_name = request.POST.get('grocery_name')
         ex_date = request.POST.get('ex_date')
         quantity = request.POST.get('quantity')
-        grocerie_type_id = request.POST.get('grocerie_type')
+        unit = request.POST.get('unit')
+        grocerie_type = request.POST.get('grocerie_type')
         
         try:
-            grocerie_type = GroceryType.objects.get(id=grocerie_type_id)
             Grocery.objects.create(
                 grocery_name=grocery_name,
                 ex_date=ex_date,
                 quantity=quantity,
+                unit=unit,
                 grocerie_type=grocerie_type,
                 user=request.user
             )
@@ -780,26 +1055,26 @@ def add_grocery(request):
             messages.error(request, f'Error adding grocery: {str(e)}')
     
     return render(request, 'food/add.html', {
-        'grocery_types': grocery_types,
+        'category_choices': Grocery.CATEGORY_CHOICES,
         'is_editing': False
     })
 
 @login_required
 def edit_grocery(request, pk):
     grocery = get_object_or_404(Grocery, pk=pk, user=request.user)
-    grocery_types = GroceryType.objects.all()
     
     if request.method == 'POST':
         grocery_name = request.POST.get('grocery_name')
         ex_date = request.POST.get('ex_date')
         quantity = request.POST.get('quantity')
-        grocerie_type_id = request.POST.get('grocerie_type')
+        unit = request.POST.get('unit')
+        grocerie_type = request.POST.get('grocerie_type')
         
         try:
-            grocerie_type = GroceryType.objects.get(id=grocerie_type_id)
             grocery.grocery_name = grocery_name
             grocery.ex_date = ex_date
             grocery.quantity = quantity
+            grocery.unit = unit
             grocery.grocerie_type = grocerie_type
             grocery.save()
             messages.success(request, 'Grocery updated successfully!')
@@ -811,12 +1086,13 @@ def edit_grocery(request, pk):
         'grocery_name': {'value': grocery.grocery_name},
         'ex_date': {'value': grocery.ex_date.strftime('%Y-%m-%d')},
         'quantity': {'value': grocery.quantity},
-        'grocerie_type': {'value': grocery.grocerie_type.id}
+        'unit': {'value': grocery.unit},
+        'grocerie_type': {'value': grocery.grocerie_type}
     }
     
     return render(request, 'food/add.html', {
         'form': type('obj', (object,), form_data),
-        'grocery_types': grocery_types,
+        'category_choices': Grocery.CATEGORY_CHOICES,
         'is_editing': True
     })
 
@@ -830,13 +1106,13 @@ def delete_grocery(request, pk):
 @login_required
 def shopping_list(request):
     search_query = request.GET.get('search', '').strip()
-    shop_list = ShoppingList.objects.filter(user=request.user).select_related('grocery', 'grocery__grocerie_type')
-    groceries = Grocery.objects.filter(user=request.user).select_related('grocerie_type')
+    shop_list = ShoppingList.objects.filter(user=request.user).select_related('grocery')
+    groceries = Grocery.objects.filter(user=request.user)
     
     if search_query:
         groceries = groceries.filter(
             Q(grocery_name__icontains=search_query) |
-            Q(grocerie_type__type_name__icontains=search_query)
+            Q(grocerie_type__icontains=search_query)
         )
     
     groceries = groceries.order_by('grocery_name')
@@ -978,13 +1254,31 @@ def get_recipe_deduction_candidates(request, pk):
             elif ri_name in g_name or g_name in ri_name:
                 matches.append(g) # Append partials
         
-        best_match_id = matches[0].id if matches else None
+        best_match_id = None
+        deduct_qty_suggestion = ri.quantity
+        conversion_note = None
+        
+        if matches:
+            best_match = matches[0]
+            best_match_id = best_match.id
+            
+            # Unit conversion check
+            # ri.unit vs best_match.unit
+            # If units differ, try to convert
+            if ri.unit and best_match.unit and ri.unit.lower() != best_match.unit.lower():
+                # Pass item name for specific conversions (e.g. Bread)
+                converted = convert_quantity(ri.quantity, ri.unit, best_match.unit, item_name=ri.ingredient.name)
+                if converted is not None:
+                    deduct_qty_suggestion = round(converted, 2)
+                    conversion_note = f"Converted from {ri.quantity} {ri.unit}"
         
         candidates.append({
             'ingredient_name': ri.ingredient.name,
             'quantity_needed': ri.quantity,
             'unit': ri.unit,
-            'best_match_id': best_match_id
+            'best_match_id': best_match_id,
+            'deduct_qty_suggestion': deduct_qty_suggestion,
+            'conversion_note': conversion_note
         })
         
     # Serialize user inventory for the dropdown
@@ -992,7 +1286,7 @@ def get_recipe_deduction_candidates(request, pk):
         'id': g.id, 
         'name': g.grocery_name, 
         'qty': g.quantity,
-        'unit': g.grocerie_type.type_name # Using category as proxy for unit context sometimes
+        'unit': g.unit # Using the actual unit field
     } for g in user_groceries]
     
     return JsonResponse({
