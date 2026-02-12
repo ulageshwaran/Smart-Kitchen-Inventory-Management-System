@@ -241,7 +241,8 @@
         {% if recipe.calories or recipe.protein %}
         <div class="recipe-section mb-4">
             <div class="recipe-section-heading">
-                <i class="bi bi-fire"></i> Nutrition Info
+                <i class="bi bi-fire"></i> Nutrition Info <span class="text-muted ms-2 fs-6 fw-normal">(Per
+                    Serving)</span>
             </div>
             <div class="d-flex flex-wrap gap-4 text-center">
                 {% if recipe.calories %}
@@ -261,29 +262,21 @@
                     <div class="text-uppercase text-muted fw-bold small mb-1">Carbs</div>
                     <div class="h3 mb-0 text-dark">{{ recipe.carbs }}</div>
                 </div>
-                {% endif %}
-                {% if recipe.fats %}
                 <div class="p-4 rounded-3 bg-light border flex-grow-1">
                     <div class="text-uppercase text-muted fw-bold small mb-1">Fats</div>
                     <div class="h3 mb-0 text-dark">{{ recipe.fats }}</div>
                 </div>
                 {% endif %}
+                {% if recipe.cooking_time %}
+                <div class="p-4 rounded-3 bg-light border flex-grow-1">
+                    <div class="text-uppercase text-muted fw-bold small mb-1">Time</div>
+                    <div class="h3 mb-0 text-dark">{{ recipe.cooking_time }}</div>
+                </div>
+                {% endif %}
             </div>
         </div>
         {% endif %}
-
-        <!-- Description & Instructions -->
-        {% if recipe.description %}
-        <div class="recipe-section">
-            <div class="recipe-section-heading">
-                <i class="bi bi-file-text"></i> Recipe Details
-            </div>
-            <div id="recipe-content">
-                <!-- Formatted content will be inserted here -->
-            </div>
-        </div>
-        {% endif %}
-
+        
         <!-- Ingredients Section -->
         {% if ingredients %}
         <div class="recipe-section">
@@ -304,6 +297,20 @@
             </ul>
         </div>
         {% endif %}
+
+        <!-- Description & Instructions -->
+        {% if recipe.description %}
+        <div class="recipe-section">
+            <div class="recipe-section-heading">
+                <i class="bi bi-file-text"></i> Recipe Details
+            </div>
+            <div id="recipe-content">
+                <!-- Formatted content will be inserted here -->
+            </div>
+        </div>
+        {% endif %}
+
+        
     </div>
 </div>
 
@@ -351,54 +358,39 @@
     let inventoryData = [];
 
     // Format content on page load
-    const recipeDescription = `{{ recipe.description|escapejs }}`;
-    formatRecipeContent(recipeDescription);
+    const recipeDescription = `{{ recipe.description|default:''|escapejs }}`;
+    const recipeInstructions = `{{ recipe.instructions|default:''|escapejs }}`;
 
-    // Format recipe content function
-    function formatRecipeContent(content) {
-        const container = document.getElementById('recipe-content');
-        if (!container) return;
-        const lines = content.split('\n');
+    // Simple display logic
+    const container = document.getElementById('recipe-content');
+    if (container) {
         let html = '';
-        let instructionsList = [];
-        let descriptionText = '';
-        let currentSection = '';
 
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i].trim();
-            if (!line) continue;
-
-            if (line.toLowerCase().includes('instruction') || line.toLowerCase().includes('step')) {
-                currentSection = 'instructions';
-                continue;
-            }
-
-            if (currentSection === '') {
-                if (!line.includes('**') && !line.match(/^\d+\.|^[\*\-]/)) {
-                    descriptionText += line + ' ';
-                }
-                continue;
-            }
-
-            if (currentSection === 'instructions') {
-                if (line.match(/^\d+\./) || line.match(/^[\*\-]/)) {
-                    const cleanLine = line.replace(/^\d+\.\s*/, '').replace(/^[\*\-]\s*/, '').replace(/\*\*/g, '').trim();
-                    if (cleanLine.length > 5) instructionsList.push(cleanLine);
-                } else if (line.length > 20) {
-                    instructionsList.push(line);
-                }
-            }
+        // Description
+        if (recipeDescription) {
+            html += `<p class="recipe-description-text">${recipeDescription}</p>`;
         }
 
-        if (descriptionText.trim()) {
-            html += `<p class="recipe-description-text">${descriptionText.trim()}</p>`;
-        }
-
-        if (instructionsList.length > 0) {
+        // Instructions
+        if (recipeInstructions) {
             html += '<div class="mt-4">';
             html += '<h4 class="recipe-section-title"><i class="bi bi-list-check"></i> Instructions</h4>';
             html += '<div class="instructions-list"><ol>';
-            instructionsList.forEach((inst) => html += `<li>${inst}</li>`);
+
+            // Split by newlines, "Step X:", or numbered lists
+            // \r\n, \n, \r, OR "Step <number>:", OR "<number>."
+            const lines = recipeInstructions.split(/\r?\n|Step\s+\d+:|\d+\.\s+/);
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (line) {
+                    // Clean up any remaining leading markers
+                    const cleanLine = line.replace(/^(?:Step\s+\d+:|\d+\.|^[\*\-•])\s*/i, '').trim();
+                    if (cleanLine.length > 3) { // Filter out very short artifacts
+                        html += `<li>${cleanLine}</li>`;
+                    }
+                }
+            });
             html += '</ol></div></div>';
         }
 

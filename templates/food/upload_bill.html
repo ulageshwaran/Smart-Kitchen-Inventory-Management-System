@@ -55,6 +55,7 @@
                                         <th>Item Name</th>
                                         <th>Quantity</th>
                                         <th>Unit</th>
+                                        <th>Manufacturing Date</th>
                                         <th>Expiry Date</th>
                                         <th>Category</th>
                                         <th>Action</th>
@@ -189,10 +190,12 @@
                         <option value="slice" ${item.unit === 'slice' ? 'selected' : ''}>slice</option>
                         <option value="bunch" ${item.unit === 'bunch' ? 'selected' : ''}>bunch</option>
                     </select>
+                    </select>
                 </td>
+                <td><input type="date" class="form-control form-control-sm" value="${item.mfd || ''}" data-field="mfd" onchange="autoUpdateExpiry(this)"></td>
                 <td><input type="date" class="form-control form-control-sm" value="${item.expiry}" data-field="expiry"></td>
                 <td>
-                    <select class="form-select form-select-sm" data-field="category">
+                    <select class="form-select form-select-sm" data-field="category" onchange="autoUpdateExpiry(this)">
                         ${categories.map(cat =>
                     `<option value="${cat.name}" ${cat.name.toLowerCase() === item.category.toLowerCase() ? 'selected' : ''}>${cat.name}</option>`
                 ).join('')}
@@ -220,6 +223,7 @@
                     name: row.querySelector('[data-field="name"]').value,
                     quantity: row.querySelector('[data-field="quantity"]').value,
                     unit: row.querySelector('[data-field="unit"]').value,
+                    mfd: row.querySelector('[data-field="mfd"]').value,
                     expiry: row.querySelector('[data-field="expiry"]').value,
                     category: row.querySelector('[data-field="category"]').value
                 });
@@ -268,6 +272,44 @@
             }
             return cookieValue;
         }
+
+        // Expose to global scope for inline event handlers
+        window.autoUpdateExpiry = function (element) {
+            const row = element.closest('tr');
+            const mfdInput = row.querySelector('[data-field="mfd"]');
+            const expInput = row.querySelector('[data-field="expiry"]');
+            const categoryInput = row.querySelector('[data-field="category"]');
+
+            const mfd = mfdInput.value;
+            const category = categoryInput.value;
+
+            // Default shelf life (same as add.html)
+            const shelfLife = {
+                'Vegetables': 5, 'Fruits': 5, 'Dairy': 7,
+                'Meat': 3, 'Grains': 365, 'Spices': 365,
+                'Condiments & Seasonings': 180, 'Beverages': 180,
+                'Snacks': 90, 'Others': 30
+            };
+
+            if (mfd && category && shelfLife[category]) {
+                // Check if shelfLife key matches category name properly (case-sensitive usually, but let's try direct match first)
+                // The category values in dropdown are names.
+
+                const days = shelfLife[category] || 30; // fallback 30
+
+                const mfdDate = new Date(mfd);
+                if (!isNaN(mfdDate)) {
+                    const expDate = new Date(mfdDate);
+                    expDate.setDate(expDate.getDate() + days);
+
+                    const yyyy = expDate.getFullYear();
+                    const mm = String(expDate.getMonth() + 1).padStart(2, '0');
+                    const dd = String(expDate.getDate()).padStart(2, '0');
+
+                    expInput.value = `${yyyy}-${mm}-${dd}`;
+                }
+            }
+        };
     });
 </script>
 

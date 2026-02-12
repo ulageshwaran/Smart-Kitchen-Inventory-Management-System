@@ -378,13 +378,15 @@ User Preferences: {preferences if preferences else 'None'}
                 {{
                     "name": "Recipe Name",
                     "description": "Brief appetizing description",
+                    "time": "Cooking Time (e.g. 30 mins)",
+                    "difficulty": "Easy/Medium/Hard",
                     "calories": "Total Calories",
                     "macros": {{ "protein": "10g", "carbs": "20g", "fats": "5g" }},
                     "ingredients": {{
                         "Ingredient Name (e.g. Tomato 150g)": "Quantity + Unit only (e.g. 150g) or just 150g", 
                          // IMPORTANT: The key should be the full descriptive name. The value is just for display.
                     }},
-                    "instructions": "Step 1... Step 2..."
+                    "instructions": ["Step 1...", "Step 2...", "Step 3..."]
                 }}
             ]
         }}
@@ -597,9 +599,15 @@ def save_recipe(request):
             # Extract macros if available
             macros = data.get('macros', {})
             
+            # specific instructions format for the text field
+            desc_text = data.get('description', '')
+            inst_text = data.get('instructions', '')
+            
             recipe = Receipe.objects.create(
                 name=data.get('recipe_name', 'Unnamed Recipe'),
-                description=data.get('instructions', ''),
+                description=desc_text,
+                instructions=inst_text,
+                cooking_time=data.get('cooking_time', ''),
                 calories=data.get('calories', ''),
                 protein=macros.get('protein', ''),
                 carbs=macros.get('carbs', ''),
@@ -871,14 +879,18 @@ For each food item, provide:
    - For LIQUIDS: Use "l" or "ml".
    - For SOLIDS: Use "kg" or "g".
    - Avoid "packet" or "unit" if a specific mass/volume/count unit exists.
-5. Estimated Expiry Date (YYYY-MM-DD) - Make a reasonable guess based on the type of food (e.g., Milk: 7 days, Rice: 1 year, Vegetables: 5 days). Today is {date.today()}.
-6. Category - Choose the best match from this list: [{categories_str}]
+5. Manufacturing Date (YYYY-MM-DD) - IF found on the bill. Otherwise null.
+6. Estimated Expiry Date (YYYY-MM-DD):
+   - IF Expiry Date is on bill, use it.
+   - IF Manufacturing Date is on bill, calculate based on typical shelf life (e.g. Dairy: +7 days, Bread: +5 days).
+   - IF NEITHER, make a reasonable guess based on the type of food from today {date.today()}.
+7. Category - Choose the best match from this list: [{categories_str}]
 
 Format the response as a valid JSON list of objects.
 Example format:
 [
-  {{"name": "Milk", "quantity": 1, "unit": "l", "expiry": "2024-02-01", "category": "Dairy"}},
-  {{"name": "Basmati Rice", "quantity": 1, "unit": "kg", "expiry": "2025-01-01", "category": "Grains"}}
+  {{"name": "Milk", "quantity": 1, "unit": "l", "mfd": "2024-01-25", "expiry": "2024-02-01", "category": "Dairy"}},
+  {{"name": "Basmati Rice", "quantity": 1, "unit": "kg", "mfd": null, "expiry": "2025-01-01", "category": "Grains"}}
 ]
 Return ONLY the JSON. Do not include markdown formatting or backticks.
 """
@@ -974,6 +986,7 @@ def save_bill_items(request):
                 
                 bg_name = item.get('name', '').strip()
                 ex_date = item.get('expiry')
+                manufacturing_date = item.get('mfd') or None # Handle empty string as None
                 raw_qty = float(item.get('quantity', 1))
                 unit = item.get('unit', 'unit')
                 
@@ -1013,6 +1026,7 @@ def save_bill_items(request):
                         quantity=raw_qty,
                         unit=unit,
                         grocerie_type=category_name if category_name else 'Others',
+                        manufacturing_date=manufacturing_date,
                         user=request.user
                     )
                 saved_count += 1
@@ -1039,6 +1053,11 @@ def add_grocery(request):
         quantity = request.POST.get('quantity')
         unit = request.POST.get('unit')
         grocerie_type = request.POST.get('grocerie_type')
+        manufacturing_date = request.POST.get('manufacturing_date')
+        
+        # Handle empty string for date
+        if not manufacturing_date:
+            manufacturing_date = None
         
         try:
             Grocery.objects.create(
@@ -1047,6 +1066,7 @@ def add_grocery(request):
                 quantity=quantity,
                 unit=unit,
                 grocerie_type=grocerie_type,
+                manufacturing_date=manufacturing_date,
                 user=request.user
             )
             messages.success(request, 'Grocery added successfully!')
@@ -1069,6 +1089,10 @@ def edit_grocery(request, pk):
         quantity = request.POST.get('quantity')
         unit = request.POST.get('unit')
         grocerie_type = request.POST.get('grocerie_type')
+        manufacturing_date = request.POST.get('manufacturing_date')
+        
+        if not manufacturing_date:
+            manufacturing_date = None
         
         try:
             grocery.grocery_name = grocery_name
@@ -1076,6 +1100,7 @@ def edit_grocery(request, pk):
             grocery.quantity = quantity
             grocery.unit = unit
             grocery.grocerie_type = grocerie_type
+            grocery.manufacturing_date = manufacturing_date
             grocery.save()
             messages.success(request, 'Grocery updated successfully!')
             return redirect('index')
@@ -1084,10 +1109,11 @@ def edit_grocery(request, pk):
     
     form_data = {
         'grocery_name': {'value': grocery.grocery_name},
-        'ex_date': {'value': grocery.ex_date.strftime('%Y-%m-%d')},
+        'ex_date': {'value': grocery.ex_date.strftime('%Y-%m-%d') if grocery.ex_date else ''},
         'quantity': {'value': grocery.quantity},
         'unit': {'value': grocery.unit},
-        'grocerie_type': {'value': grocery.grocerie_type}
+        'grocerie_type': {'value': grocery.grocerie_type},
+        'manufacturing_date': {'value': grocery.manufacturing_date.strftime('%Y-%m-%d') if grocery.manufacturing_date else ''}
     }
     
     return render(request, 'food/add.html', {

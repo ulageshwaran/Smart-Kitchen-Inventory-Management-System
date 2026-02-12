@@ -212,7 +212,13 @@
             // -----------------------------------------------------
             // Build ingredients list HTML
             const ingredientsHtml = recipe.ingredients.map(ing => `<li>${ing}</li>`).join('');
-            const instructionsHtml = recipe.instructions.map(step => `<li>${step}</li>`).join('');
+
+            // Clean up instructions for display
+            const instructionsHtml = recipe.instructions.map(step => {
+                // Remove leading "Step 1:", "1.", "- ", etc.
+                const cleanStep = step.replace(/^(?:Step\s+\d+:|\d+\.|^[\*\-•])\s*/i, '').trim();
+                return `<li>${cleanStep}</li>`;
+            }).join('');
 
             col.innerHTML = `
             <div class="card h-100 shadow-sm border-0 recipe-card">
@@ -226,6 +232,7 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    ${recipe.description ? `<p class="card-text text-muted small mb-3">${recipe.description}</p>` : ''}
                     ${recipe.uses_expiring ? '<div class="mb-3"><span class="badge bg-success bg-opacity-10 text-success border border-success"><i class="bi bi-star-fill"></i> Uses Expiring Items</span></div>' : ''}
                     
                     ${recipe.macros ? `
@@ -290,9 +297,22 @@
         try {
             // Convert ingredients array to object for backend compatibility
             const ingredientsObj = {};
-            recipe.ingredients.forEach(ing => {
-                ingredientsObj[ing] = "1"; // Default quantity
-            });
+            if (recipe.ingredients && Array.isArray(recipe.ingredients)) {
+                recipe.ingredients.forEach(ing => {
+                    const cleanIng = ing.replace(/^[•\-\*]\s*/, ''); // Clean bullets if present
+                    ingredientsObj[cleanIng] = "1"; // Default quantity, backend parses name for qty
+                });
+            }
+
+            // Prepare Description and Instructions separately
+            const description = recipe.description || '';
+            let instructionsText = '';
+
+            if (recipe.instructions && Array.isArray(recipe.instructions)) {
+                instructionsText = recipe.instructions.join('\n');
+            } else {
+                instructionsText = recipe.instructions || '';
+            }
 
             const response = await fetch("{% url 'save_recipe' %}", {
                 method: 'POST',
@@ -302,7 +322,9 @@
                 },
                 body: JSON.stringify({
                     recipe_name: recipe.name,
-                    instructions: recipe.instructions.join('\n'),
+                    description: description,
+                    instructions: instructionsText,
+                    cooking_time: recipe.time,
                     ingredients: ingredientsObj,
                     calories: recipe.calories || '',
                     macros: recipe.macros || {}

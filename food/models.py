@@ -21,6 +21,7 @@ class Grocery(models.Model):
     quantity = models.FloatField(default=1.0)
     unit = models.CharField(max_length=20, default='unit')
     grocerie_type = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='Others')
+    manufacturing_date = models.DateField(null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
 
     class Meta:
@@ -49,6 +50,8 @@ class Ingredient(models.Model):
 class Receipe(models.Model):
     name = models.CharField(max_length=200, default="Unnamed Recipe")
     description = models.TextField(blank=True, null=True)
+    instructions = models.TextField(blank=True, null=True)
+    cooking_time = models.CharField(max_length=50, blank=True, null=True)
     calories = models.CharField(max_length=100, blank=True, null=True)
     protein = models.CharField(max_length=100, blank=True, null=True)
     carbs = models.CharField(max_length=100, blank=True, null=True)

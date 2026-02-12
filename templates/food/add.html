@@ -12,6 +12,13 @@
             value="{{ form.grocery_name.value|default:'' }}" required>
     </div>
 
+ <div class="col-md-6">
+        <label for="manufacturing_date" class="form-label">Manufacturing Date</label>
+        <input type="date" class="form-control" id="manufacturing_date" name="manufacturing_date"
+            value="{{ form.manufacturing_date.value|default:'' }}">
+        <small class="text-muted">Expiry date will be auto-calculated based on category if left empty.</small>
+    </div>
+
     <div class="col-md-6">
         <label for="ex_date" class="form-label">Expiry Date</label>
         <input type="date" class="form-control" id="ex_date" name="ex_date" value="{{ form.ex_date.value|default:'' }}"
@@ -64,9 +71,59 @@
         </select>
     </div>
 
+   
+
     <div class="col-12 mt-3">
         <button type="submit" class="btn btn-primary">{% if is_editing %}Update{% else %}Add{% endif %}</button>
         <a href="{% url 'index' %}" class="btn btn-secondary">Cancel</a>
     </div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const mfdInput = document.getElementById('manufacturing_date');
+        const expInput = document.getElementById('ex_date');
+        const categoryInput = document.getElementById('grocerie_type');
+
+        // Default shelf life in days
+        const shelfLife = {
+            'Vegetables': 5,
+            'Fruits': 5,
+            'Dairy': 7,
+            'Meat': 3,
+            'Grains': 365,
+            'Spices': 365,
+            'Condiments & Seasonings': 180,
+            'Beverages': 180,
+            'Snacks': 90,
+            'Others': 30
+        };
+
+        function updateExpiry() {
+            const mfd = mfdInput.value;
+            const category = categoryInput.value;
+
+            if (mfd && category && shelfLife[category]) {
+                const mfdDate = new Date(mfd);
+                const days = shelfLife[category];
+
+                const expDate = new Date(mfdDate);
+                expDate.setDate(expDate.getDate() + days);
+
+                const yyyy = expDate.getFullYear();
+                const mm = String(expDate.getMonth() + 1).padStart(2, '0');
+                const dd = String(expDate.getDate()).padStart(2, '0');
+
+                expInput.value = `${yyyy}-${mm}-${dd}`;
+            }
+        }
+
+        if (mfdInput && categoryInput) {
+            mfdInput.addEventListener('change', updateExpiry);
+            categoryInput.addEventListener('change', updateExpiry);
+        }
+    });
+</script>
 {% endblock %}
